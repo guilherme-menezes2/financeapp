@@ -75,6 +75,7 @@ def criar_lancamentos_exemplo(db, categorias):
             [
                 {
                     "tipo": "receita",
+                    "forma_pagamento": "pix",
                     "descricao": "Salario mensal",
                     "valor": Decimal("5000.00") + variacao,
                     "data": data_no_mes(mes, 5),
@@ -82,6 +83,7 @@ def criar_lancamentos_exemplo(db, categorias):
                 },
                 {
                     "tipo": "receita",
+                    "forma_pagamento": "pix",
                     "descricao": "Venda extra",
                     "valor": Decimal("450.00") + Decimal(indice * 20),
                     "data": data_no_mes(mes, 12),
@@ -89,6 +91,7 @@ def criar_lancamentos_exemplo(db, categorias):
                 },
                 {
                     "tipo": "despesa",
+                    "forma_pagamento": "boleto",
                     "descricao": "Aluguel",
                     "valor": Decimal("1800.00"),
                     "data": data_no_mes(mes, 7),
@@ -96,6 +99,7 @@ def criar_lancamentos_exemplo(db, categorias):
                 },
                 {
                     "tipo": "despesa",
+                    "forma_pagamento": "debito",
                     "descricao": "Compras no supermercado",
                     "valor": Decimal("720.00") + Decimal(indice * 35),
                     "data": data_no_mes(mes, 10),
@@ -103,6 +107,7 @@ def criar_lancamentos_exemplo(db, categorias):
                 },
                 {
                     "tipo": "despesa",
+                    "forma_pagamento": "boleto",
                     "descricao": "Conta de energia",
                     "valor": Decimal("210.00") + Decimal(indice * 8),
                     "data": data_no_mes(mes, 15),
@@ -110,6 +115,7 @@ def criar_lancamentos_exemplo(db, categorias):
                 },
                 {
                     "tipo": "despesa",
+                    "forma_pagamento": "boleto",
                     "descricao": "Internet residencial",
                     "valor": Decimal("120.00"),
                     "data": data_no_mes(mes, 18),
@@ -117,6 +123,7 @@ def criar_lancamentos_exemplo(db, categorias):
                 },
                 {
                     "tipo": "despesa",
+                    "forma_pagamento": "credito",
                     "descricao": "Combustivel",
                     "valor": Decimal("320.00") + Decimal(indice * 12),
                     "data": data_no_mes(mes, 21),
@@ -124,6 +131,7 @@ def criar_lancamentos_exemplo(db, categorias):
                 },
                 {
                     "tipo": "despesa",
+                    "forma_pagamento": "credito",
                     "descricao": "Restaurante",
                     "valor": Decimal("180.00") + Decimal(indice * 10),
                     "data": data_no_mes(mes, 24),
@@ -136,6 +144,7 @@ def criar_lancamentos_exemplo(db, categorias):
             lancamentos.append(
                 {
                     "tipo": "receita",
+                    "forma_pagamento": "pix",
                     "descricao": "Reembolso",
                     "valor": Decimal("180.00") + Decimal(indice * 15),
                     "data": data_no_mes(mes, 20),
@@ -147,6 +156,7 @@ def criar_lancamentos_exemplo(db, categorias):
             lancamentos.append(
                 {
                     "tipo": "despesa",
+                    "forma_pagamento": "debito",
                     "descricao": "Compra na farmacia",
                     "valor": Decimal("95.00") + Decimal(indice * 7),
                     "data": data_no_mes(mes, 26),
@@ -158,6 +168,7 @@ def criar_lancamentos_exemplo(db, categorias):
         db.add(
             models.Lancamento(
                 tipo=lancamento["tipo"],
+                forma_pagamento=lancamento["forma_pagamento"],
                 descricao=lancamento["descricao"],
                 valor=lancamento["valor"],
                 data=lancamento["data"],

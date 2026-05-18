@@ -28,6 +28,7 @@ class Lancamento(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     tipo = Column(String(20), nullable=False)
+    forma_pagamento = Column(String(20), nullable=False, default="pix")
     descricao = Column(String(150), nullable=False)
     valor = Column(Numeric(12, 2), nullable=False)
     data = Column(Date, nullable=False, index=True)
@@ -40,6 +41,10 @@ class Lancamento(Base):
 
     __table_args__ = (
         CheckConstraint("tipo in ('receita', 'despesa')", name="ck_lancamentos_tipo"),
+        CheckConstraint(
+            "forma_pagamento in ('credito', 'debito', 'boleto', 'pix')",
+            name="ck_lancamentos_forma_pagamento",
+        ),
         CheckConstraint("valor > 0", name="ck_lancamentos_valor_positivo"),
     )
 

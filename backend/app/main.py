@@ -9,9 +9,11 @@ from app.database import Base, engine
 from app.routers import categorias
 from app.routers import lancamentos
 from app.routers import resumo
+from app.utils.db_migrations import aplicar_migracoes_sqlite
 
 
 Base.metadata.create_all(bind=engine)
+aplicar_migracoes_sqlite()
 
 app = FastAPI(
     title="Financas Pessoais API",

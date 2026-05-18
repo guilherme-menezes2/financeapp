@@ -67,6 +67,7 @@ def criar_lancamento(lancamento: schemas.LancamentoCreate, db: Session = Depends
 
     novo_lancamento = models.Lancamento(
         tipo=lancamento.tipo,
+        forma_pagamento=lancamento.forma_pagamento,
         descricao=lancamento.descricao,
         valor=lancamento.valor,
         data=lancamento.data,

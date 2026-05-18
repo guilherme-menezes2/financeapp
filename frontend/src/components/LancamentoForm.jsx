@@ -12,6 +12,7 @@ import {
 
 const valoresIniciais = {
   tipo: "despesa",
+  forma_pagamento: "pix",
   descricao: "",
   valor: "",
   data: "",
@@ -50,12 +51,17 @@ function validarFormulario(formData) {
     return "Selecione uma categoria.";
   }
 
+  if (!formData.forma_pagamento) {
+    return "Selecione o tipo de pagamento.";
+  }
+
   return "";
 }
 
 function montarPayload(formData) {
   return {
     tipo: formData.tipo,
+    forma_pagamento: formData.forma_pagamento,
     descricao: formData.descricao.trim(),
     valor: Number(formData.valor),
     data: formData.data,
@@ -86,6 +92,7 @@ function LancamentoForm({ lancamentoId }) {
         const lancamento = await obterLancamento(lancamentoId);
         setFormData({
           tipo: lancamento.tipo,
+          forma_pagamento: lancamento.forma_pagamento || "pix",
           descricao: lancamento.descricao || "",
           valor: String(lancamento.valor || ""),
           data: lancamento.data || "",
@@ -204,6 +211,19 @@ function LancamentoForm({ lancamentoId }) {
                 {categoria.nome}
               </option>
             ))}
+          </select>
+        </label>
+
+        <label>
+          Tipo de pagamento
+          <select
+            value={formData.forma_pagamento}
+            onChange={(event) => atualizarCampo("forma_pagamento", event.target.value)}
+          >
+            <option value="credito">Credito</option>
+            <option value="debito">Debito</option>
+            <option value="boleto">Boleto</option>
+            <option value="pix">Pix</option>
           </select>
         </label>
 

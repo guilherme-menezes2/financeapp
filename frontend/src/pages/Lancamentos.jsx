@@ -16,6 +16,13 @@ const filtrosIniciais = {
   texto: "",
 };
 
+const labelsFormaPagamento = {
+  credito: "Credito",
+  debito: "Debito",
+  boleto: "Boleto",
+  pix: "Pix",
+};
+
 function montarParametros(filtros) {
   return Object.fromEntries(
     Object.entries(filtros).filter(([, valor]) => valor !== "")
@@ -176,6 +183,7 @@ function Lancamentos() {
                   <tr>
                     <th>Descricao</th>
                     <th>Tipo</th>
+                    <th>Pagamento</th>
                     <th>Valor</th>
                     <th>Data</th>
                     <th>Categoria</th>
@@ -197,6 +205,9 @@ function Lancamentos() {
                           <span className={`type-pill ${ehReceita ? "income" : "expense"}`}>
                             {ehReceita ? "Receita" : "Despesa"}
                           </span>
+                        </td>
+                        <td data-label="Pagamento">
+                          {labelsFormaPagamento[lancamento.forma_pagamento] || "Pix"}
                         </td>
                         <td data-label="Valor" className={ehReceita ? "value-income" : "value-expense"}>
                           {valorFormatado}

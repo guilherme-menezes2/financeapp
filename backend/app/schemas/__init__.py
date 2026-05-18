@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 TipoLancamento = Literal["receita", "despesa"]
+FormaPagamento = Literal["credito", "debito", "boleto", "pix"]
 
 
 class CategoriaBase(BaseModel):
@@ -67,6 +68,7 @@ class CategoriaResponse(CategoriaBase):
 
 class LancamentoBase(BaseModel):
     tipo: TipoLancamento
+    forma_pagamento: FormaPagamento = "pix"
     descricao: str = Field(..., min_length=1, max_length=150)
     valor: Decimal = Field(..., gt=0, max_digits=12, decimal_places=2)
     data: date
@@ -88,6 +90,7 @@ class LancamentoCreate(LancamentoBase):
             "examples": [
                 {
                     "tipo": "despesa",
+                    "forma_pagamento": "pix",
                     "descricao": "Compra no mercado",
                     "valor": "250.75",
                     "data": "2026-05-18",
@@ -101,6 +104,7 @@ class LancamentoCreate(LancamentoBase):
 
 class LancamentoUpdate(BaseModel):
     tipo: TipoLancamento | None = None
+    forma_pagamento: FormaPagamento | None = None
     descricao: str | None = Field(default=None, min_length=1, max_length=150)
     valor: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
     data: date | None = None
@@ -122,6 +126,7 @@ class LancamentoUpdate(BaseModel):
 class LancamentoResponse(BaseModel):
     id: int
     tipo: TipoLancamento
+    forma_pagamento: FormaPagamento
     descricao: str
     valor: Decimal
     data: date
