@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import ErrorState from "./ErrorState.jsx";
 import LoadingState from "./LoadingState.jsx";
+import { listarCartoes } from "../services/cartoesService.js";
 import { listarCategorias } from "../services/categoriasService.js";
 import {
   atualizarLancamento,
@@ -17,6 +18,7 @@ const valoresIniciais = {
   valor: "",
   data: "",
   categoria_id: "",
+  cartao_id: "",
   observacao: "",
 };
 
@@ -55,6 +57,10 @@ function validarFormulario(formData) {
     return "Selecione o tipo de pagamento.";
   }
 
+  if (formData.forma_pagamento === "credito" && !formData.cartao_id) {
+    return "Selecione o cartao usado no credito.";
+  }
+
   return "";
 }
 
@@ -66,6 +72,7 @@ function montarPayload(formData) {
     valor: Number(formData.valor),
     data: formData.data,
     categoria_id: Number(formData.categoria_id),
+    cartao_id: formData.forma_pagamento === "credito" ? Number(formData.cartao_id) : null,
     observacao: formData.observacao.trim() || null,
   };
 }
@@ -75,8 +82,10 @@ function LancamentoForm({ lancamentoId }) {
   const editando = Boolean(lancamentoId);
   const [formData, setFormData] = useState(valoresIniciais);
   const [categorias, setCategorias] = useState([]);
+  const [cartoes, setCartoes] = useState([]);
   const [loadingInicial, setLoadingInicial] = useState(editando);
   const [loadingCategorias, setLoadingCategorias] = useState(false);
+  const [loadingCartoes, setLoadingCartoes] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
@@ -97,6 +106,7 @@ function LancamentoForm({ lancamentoId }) {
           valor: String(lancamento.valor || ""),
           data: lancamento.data || "",
           categoria_id: String(lancamento.categoria_id || ""),
+          cartao_id: String(lancamento.cartao_id || ""),
           observacao: lancamento.observacao || "",
         });
       } catch (error) {
@@ -108,6 +118,29 @@ function LancamentoForm({ lancamentoId }) {
 
     carregarLancamento();
   }, [editando, lancamentoId]);
+
+  useEffect(() => {
+    async function carregarCartoes() {
+      try {
+        setLoadingCartoes(true);
+        const dados = await listarCartoes();
+        setCartoes(dados);
+      } catch (error) {
+        setCartoes([]);
+        setErro("Nao foi possivel carregar os cartoes.");
+      } finally {
+        setLoadingCartoes(false);
+      }
+    }
+
+    carregarCartoes();
+  }, []);
+
+  useEffect(() => {
+    if (formData.forma_pagamento !== "credito" && formData.cartao_id) {
+      setFormData((dadosAtuais) => ({ ...dadosAtuais, cartao_id: "" }));
+    }
+  }, [formData.forma_pagamento, formData.cartao_id]);
 
   useEffect(() => {
     async function carregarCategoriasCompativeis() {
@@ -138,6 +171,7 @@ function LancamentoForm({ lancamentoId }) {
       ...dadosAtuais,
       [campo]: valor,
       ...(campo === "tipo" ? { categoria_id: "" } : {}),
+      ...(campo === "forma_pagamento" && valor !== "credito" ? { cartao_id: "" } : {}),
     }));
   }
 
@@ -226,6 +260,26 @@ function LancamentoForm({ lancamentoId }) {
             <option value="pix">Pix</option>
           </select>
         </label>
+
+        {formData.forma_pagamento === "credito" ? (
+          <label>
+            Cartao
+            <select
+              value={formData.cartao_id}
+              disabled={loadingCartoes}
+              onChange={(event) => atualizarCampo("cartao_id", event.target.value)}
+            >
+              <option value="">
+                {loadingCartoes ? "Carregando cartoes..." : "Selecione"}
+              </option>
+              {cartoes.map((cartao) => (
+                <option key={cartao.id} value={cartao.id}>
+                  {cartao.nome} - {cartao.bandeira}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <label className="form-grid-wide">
           Descricao

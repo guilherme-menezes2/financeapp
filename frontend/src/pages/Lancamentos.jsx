@@ -207,7 +207,12 @@ function Lancamentos() {
                           </span>
                         </td>
                         <td data-label="Pagamento">
-                          {labelsFormaPagamento[lancamento.forma_pagamento] || "Pix"}
+                          <strong>{labelsFormaPagamento[lancamento.forma_pagamento] || "Pix"}</strong>
+                          {lancamento.forma_pagamento === "credito" && lancamento.cartao_nome ? (
+                            <span>
+                              {lancamento.cartao_nome} - {lancamento.cartao_bandeira}
+                            </span>
+                          ) : null}
                         </td>
                         <td data-label="Valor" className={ehReceita ? "value-income" : "value-expense"}>
                           {valorFormatado}

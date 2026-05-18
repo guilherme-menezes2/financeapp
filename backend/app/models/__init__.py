@@ -23,6 +23,22 @@ class Categoria(Base):
     )
 
 
+class Cartao(Base):
+    __tablename__ = "cartoes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nome = Column(String(100), nullable=False, unique=True, index=True)
+    bandeira = Column(String(50), nullable=False)
+    limite = Column(Numeric(12, 2), nullable=False)
+    criado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    lancamentos = relationship("Lancamento", back_populates="cartao")
+
+    __table_args__ = (
+        CheckConstraint("limite >= 0", name="ck_cartoes_limite_nao_negativo"),
+    )
+
+
 class Lancamento(Base):
     __tablename__ = "lancamentos"
 
@@ -33,11 +49,13 @@ class Lancamento(Base):
     valor = Column(Numeric(12, 2), nullable=False)
     data = Column(Date, nullable=False, index=True)
     categoria_id = Column(Integer, ForeignKey("categorias.id"), nullable=False)
+    cartao_id = Column(Integer, ForeignKey("cartoes.id"), nullable=True)
     observacao = Column(Text, nullable=True)
     criado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
     atualizado_em = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     categoria = relationship("Categoria", back_populates="lancamentos")
+    cartao = relationship("Cartao", back_populates="lancamentos")
 
     __table_args__ = (
         CheckConstraint("tipo in ('receita', 'despesa')", name="ck_lancamentos_tipo"),
@@ -55,3 +73,11 @@ class Lancamento(Base):
     @property
     def categoria_cor(self):
         return self.categoria.cor if self.categoria else None
+
+    @property
+    def cartao_nome(self):
+        return self.cartao.nome if self.cartao else None
+
+    @property
+    def cartao_bandeira(self):
+        return self.cartao.bandeira if self.cartao else None

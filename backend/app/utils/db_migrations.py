@@ -13,13 +13,17 @@ def aplicar_migracoes_sqlite():
         return
 
     colunas = {coluna["name"] for coluna in inspector.get_columns("lancamentos")}
-    if "forma_pagamento" in colunas:
-        return
 
     with engine.begin() as connection:
-        connection.execute(
-            text(
-                "ALTER TABLE lancamentos "
-                "ADD COLUMN forma_pagamento VARCHAR(20) NOT NULL DEFAULT 'pix'"
+        if "forma_pagamento" not in colunas:
+            connection.execute(
+                text(
+                    "ALTER TABLE lancamentos "
+                    "ADD COLUMN forma_pagamento VARCHAR(20) NOT NULL DEFAULT 'pix'"
+                )
             )
-        )
+
+        if "cartao_id" not in colunas:
+            connection.execute(
+                text("ALTER TABLE lancamentos ADD COLUMN cartao_id INTEGER")
+            )

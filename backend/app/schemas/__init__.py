@@ -66,6 +66,54 @@ class CategoriaResponse(CategoriaBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CartaoBase(BaseModel):
+    nome: str = Field(..., min_length=1, max_length=100)
+    bandeira: str = Field(..., min_length=1, max_length=50)
+    limite: Decimal = Field(..., ge=0, max_digits=12, decimal_places=2)
+
+    @field_validator("nome", "bandeira")
+    @classmethod
+    def validar_texto_obrigatorio(cls, valor: str) -> str:
+        valor_normalizado = " ".join(valor.strip().split())
+        if not valor_normalizado:
+            raise ValueError("O campo e obrigatorio.")
+        return valor_normalizado
+
+
+class CartaoCreate(CartaoBase):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {"nome": "Nubank", "bandeira": "Mastercard", "limite": "3500.00"}
+            ]
+        }
+    )
+
+
+class CartaoUpdate(BaseModel):
+    nome: str | None = Field(default=None, min_length=1, max_length=100)
+    bandeira: str | None = Field(default=None, min_length=1, max_length=50)
+    limite: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+
+    @field_validator("nome", "bandeira")
+    @classmethod
+    def validar_texto_obrigatorio(cls, valor: str | None) -> str | None:
+        if valor is None:
+            return valor
+
+        valor_normalizado = " ".join(valor.strip().split())
+        if not valor_normalizado:
+            raise ValueError("O campo e obrigatorio.")
+        return valor_normalizado
+
+
+class CartaoResponse(CartaoBase):
+    id: int
+    criado_em: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class LancamentoBase(BaseModel):
     tipo: TipoLancamento
     forma_pagamento: FormaPagamento = "pix"
@@ -73,6 +121,7 @@ class LancamentoBase(BaseModel):
     valor: Decimal = Field(..., gt=0, max_digits=12, decimal_places=2)
     data: date
     categoria_id: int = Field(..., gt=0)
+    cartao_id: int | None = Field(default=None, gt=0)
     observacao: str | None = None
 
     @field_validator("descricao")
@@ -95,6 +144,7 @@ class LancamentoCreate(LancamentoBase):
                     "valor": "250.75",
                     "data": "2026-05-18",
                     "categoria_id": 1,
+                    "cartao_id": None,
                     "observacao": "Compra mensal",
                 }
             ]
@@ -109,6 +159,7 @@ class LancamentoUpdate(BaseModel):
     valor: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
     data: date | None = None
     categoria_id: int | None = Field(default=None, gt=0)
+    cartao_id: int | None = Field(default=None, gt=0)
     observacao: str | None = None
 
     @field_validator("descricao")
@@ -133,6 +184,9 @@ class LancamentoResponse(BaseModel):
     categoria_id: int
     categoria_nome: str
     categoria_cor: str | None
+    cartao_id: int | None
+    cartao_nome: str | None
+    cartao_bandeira: str | None
     observacao: str | None
     criado_em: datetime
     atualizado_em: datetime

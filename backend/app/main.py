@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from app import models
 from app.database import Base, engine
 from app.routers import categorias
+from app.routers import cartoes
 from app.routers import lancamentos
 from app.routers import resumo
 from app.utils.db_migrations import aplicar_migracoes_sqlite
@@ -38,6 +39,7 @@ app.add_middleware(
 )
 
 app.include_router(categorias.router)
+app.include_router(cartoes.router)
 app.include_router(lancamentos.router)
 app.include_router(resumo.router)
 

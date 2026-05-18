@@ -21,6 +21,12 @@ CATEGORIAS = [
     {"nome": "Restaurante", "tipo": "despesa", "cor": "#ea580c"},
 ]
 
+CARTOES = [
+    {"nome": "Nubank", "bandeira": "Mastercard", "limite": Decimal("3500.00")},
+    {"nome": "Inter", "bandeira": "Visa", "limite": Decimal("5000.00")},
+    {"nome": "Itau", "bandeira": "Elo", "limite": Decimal("4200.00")},
+]
+
 
 def primeiro_dia_do_mes(data_referencia):
     return date(data_referencia.year, data_referencia.month, 1)
@@ -60,7 +66,27 @@ def criar_categorias(db):
     return categorias_por_chave
 
 
-def criar_lancamentos_exemplo(db, categorias):
+def criar_cartoes(db):
+    cartoes_por_nome = {}
+
+    for cartao in CARTOES:
+        existente = (
+            db.query(models.Cartao)
+            .filter(models.Cartao.nome == cartao["nome"])
+            .first()
+        )
+
+        if existente is None:
+            existente = models.Cartao(**cartao)
+            db.add(existente)
+            db.flush()
+
+        cartoes_por_nome[existente.nome] = existente
+
+    return cartoes_por_nome
+
+
+def criar_lancamentos_exemplo(db, categorias, cartoes):
     db.query(models.Lancamento).filter(models.Lancamento.observacao == SEED_MARKER).delete()
 
     hoje = date.today()
@@ -128,6 +154,7 @@ def criar_lancamentos_exemplo(db, categorias):
                     "valor": Decimal("320.00") + Decimal(indice * 12),
                     "data": data_no_mes(mes, 21),
                     "categoria": categorias[("Combustivel", "despesa")],
+                    "cartao": cartoes["Nubank"],
                 },
                 {
                     "tipo": "despesa",
@@ -136,6 +163,7 @@ def criar_lancamentos_exemplo(db, categorias):
                     "valor": Decimal("180.00") + Decimal(indice * 10),
                     "data": data_no_mes(mes, 24),
                     "categoria": categorias[("Restaurante", "despesa")],
+                    "cartao": cartoes["Inter"],
                 },
             ]
         )
@@ -173,6 +201,7 @@ def criar_lancamentos_exemplo(db, categorias):
                 valor=lancamento["valor"],
                 data=lancamento["data"],
                 categoria_id=lancamento["categoria"].id,
+                cartao_id=lancamento.get("cartao").id if lancamento.get("cartao") else None,
                 observacao=SEED_MARKER,
             )
         )
@@ -186,11 +215,13 @@ def main():
     db = SessionLocal()
     try:
         categorias = criar_categorias(db)
-        total_lancamentos = criar_lancamentos_exemplo(db, categorias)
+        cartoes = criar_cartoes(db)
+        total_lancamentos = criar_lancamentos_exemplo(db, categorias, cartoes)
         db.commit()
 
         print("Seed concluido com sucesso.")
         print(f"Categorias disponiveis: {len(categorias)}")
+        print(f"Cartoes disponiveis: {len(cartoes)}")
         print(f"Lancamentos de exemplo criados: {total_lancamentos}")
     except Exception:
         db.rollback()

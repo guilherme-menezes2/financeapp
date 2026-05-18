@@ -4,6 +4,7 @@ const menuItems = [
   { to: "/", label: "Dashboard" },
   { to: "/lancamentos", label: "Lancamentos" },
   { to: "/categorias", label: "Categorias" },
+  { to: "/cartoes", label: "Cartoes" },
 ];
 
 function Layout() {

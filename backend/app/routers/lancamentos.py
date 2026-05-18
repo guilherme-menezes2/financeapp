@@ -10,6 +10,7 @@ from app.database import get_db
 from app.services.lancamentos_service import (
     buscar_lancamento_ou_404,
     obter_categoria_compativel,
+    validar_cartao_do_lancamento,
 )
 from app.utils.dates import validar_periodo
 
@@ -34,7 +35,10 @@ def listar_lancamentos(
 ):
     validar_periodo(data_inicio, data_fim)
 
-    query = db.query(models.Lancamento).options(joinedload(models.Lancamento.categoria))
+    query = db.query(models.Lancamento).options(
+        joinedload(models.Lancamento.categoria),
+        joinedload(models.Lancamento.cartao),
+    )
 
     if tipo is not None:
         query = query.filter(models.Lancamento.tipo == tipo)
@@ -64,6 +68,7 @@ def obter_lancamento(lancamento_id: int, db: Session = Depends(get_db)):
 )
 def criar_lancamento(lancamento: schemas.LancamentoCreate, db: Session = Depends(get_db)):
     obter_categoria_compativel(db, lancamento.categoria_id, lancamento.tipo)
+    validar_cartao_do_lancamento(db, lancamento.forma_pagamento, lancamento.cartao_id)
 
     novo_lancamento = models.Lancamento(
         tipo=lancamento.tipo,
@@ -72,6 +77,7 @@ def criar_lancamento(lancamento: schemas.LancamentoCreate, db: Session = Depends
         valor=lancamento.valor,
         data=lancamento.data,
         categoria_id=lancamento.categoria_id,
+        cartao_id=lancamento.cartao_id,
         observacao=lancamento.observacao,
     )
 
@@ -91,8 +97,11 @@ def atualizar_lancamento(
     dados = dados_lancamento.model_dump(exclude_unset=True)
 
     tipo_final = dados.get("tipo", lancamento.tipo)
+    forma_pagamento_final = dados.get("forma_pagamento", lancamento.forma_pagamento)
     categoria_id_final = dados.get("categoria_id", lancamento.categoria_id)
+    cartao_id_final = dados.get("cartao_id", lancamento.cartao_id)
     obter_categoria_compativel(db, categoria_id_final, tipo_final)
+    validar_cartao_do_lancamento(db, forma_pagamento_final, cartao_id_final)
 
     for campo, valor in dados.items():
         setattr(lancamento, campo, valor)
