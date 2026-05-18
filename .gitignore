@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# Banco local
+*.db
+
+# Node / React
+node_modules/
+dist/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Docker/local
+*.log
