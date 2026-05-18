@@ -36,6 +36,8 @@ const resumoInicial = {
 };
 
 const CORES_CATEGORIAS = ["#dc2626", "#f97316", "#f59e0b", "#0f766e", "#2563eb", "#7c3aed"];
+const OPCAO_PERSONALIZADA = "personalizado";
+const OPCOES_MESES_FLUXO = [1, 3, 6, 12];
 
 function temDadosFinanceiros(resumo) {
   return (
@@ -61,6 +63,12 @@ function prepararCategorias(categorias) {
   }));
 }
 
+function fluxoPossuiValores(fluxoMensal) {
+  return fluxoMensal.some(
+    (item) => Number(item.receitas || 0) > 0 || Number(item.despesas || 0) > 0
+  );
+}
+
 function CurrencyTooltip({ active, payload, label }) {
   if (!active || !payload?.length) {
     return null;
@@ -82,26 +90,56 @@ function Dashboard() {
   const [resumo, setResumo] = useState(resumoInicial);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState("");
+  const [tipoFiltroFluxo, setTipoFiltroFluxo] = useState("6");
+  const [dataInicioFluxo, setDataInicioFluxo] = useState("");
+  const [dataFimFluxo, setDataFimFluxo] = useState("");
+
+  async function carregarResumo(params = {}) {
+    try {
+      setLoading(true);
+      setErro("");
+      const dados = await buscarResumo(params);
+      setResumo({ ...resumoInicial, ...dados });
+    } catch (error) {
+      setErro(error?.response?.data?.detail || "Nao foi possivel carregar o resumo financeiro.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    async function carregarResumo() {
-      try {
-        setLoading(true);
-        setErro("");
-        const dados = await buscarResumo();
-        setResumo({ ...resumoInicial, ...dados });
-      } catch (error) {
-        setErro("Nao foi possivel carregar o resumo financeiro.");
-      } finally {
-        setLoading(false);
-      }
+    if (tipoFiltroFluxo === OPCAO_PERSONALIZADA) {
+      return;
     }
 
-    carregarResumo();
-  }, []);
+    carregarResumo({ ultimos_meses: Number(tipoFiltroFluxo) });
+  }, [tipoFiltroFluxo]);
+
+  function handleTipoFiltroChange(valor) {
+    setTipoFiltroFluxo(valor);
+    setErro("");
+  }
+
+  function aplicarPeriodoPersonalizado() {
+    if (!dataInicioFluxo || !dataFimFluxo) {
+      setErro("Informe a data inicial e a data final.");
+      return;
+    }
+
+    if (dataInicioFluxo > dataFimFluxo) {
+      setErro("A data inicial nao pode ser maior que a data final.");
+      return;
+    }
+
+    carregarResumo({
+      data_inicio: dataInicioFluxo,
+      data_fim: dataFimFluxo,
+    });
+  }
 
   const possuiDados = temDadosFinanceiros(resumo);
   const fluxoMensal = prepararFluxoMensal(resumo.fluxo_mensal || []);
+  const fluxoComValores = fluxoPossuiValores(fluxoMensal);
   const despesasPorCategoria = prepararCategorias(resumo.despesas_por_categoria || []);
   const receitasPorCategoria = prepararCategorias(resumo.receitas_por_categoria || []);
 
@@ -115,7 +153,7 @@ function Dashboard() {
       {loading ? <LoadingState /> : null}
       {erro ? <ErrorState message={erro} /> : null}
 
-      {!loading && !erro ? (
+      {!loading ? (
         <>
           <div className="summary-grid">
             <SummaryCard label="Total de receitas" value={formatarMoeda(resumo.total_receitas)} tone="income" />
@@ -131,29 +169,74 @@ function Dashboard() {
             </div>
           ) : null}
 
-          {possuiDados ? (
-            <>
-              <div className="dashboard-grid">
+          <div className="dashboard-grid">
                 <article className="panel chart-panel wide">
                   <div className="panel-header">
                     <div>
-                      <h2>Fluxo mensal dos ultimos 6 meses</h2>
+                      <h2>Fluxo mensal</h2>
                       <span>Receitas x despesas por mes</span>
                     </div>
                   </div>
-                  <div className="chart-frame">
-                    <ResponsiveContainer width="100%" height={320}>
-                      <BarChart data={fluxoMensal}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="mesFormatado" />
-                        <YAxis tickFormatter={(valor) => formatarMoeda(valor).replace(",00", "")} width={90} />
-                        <Tooltip content={<CurrencyTooltip />} />
-                        <Legend />
-                        <Bar dataKey="receitas" name="Receitas" fill="#16a34a" radius={[6, 6, 0, 0]} />
-                        <Bar dataKey="despesas" name="Despesas" fill="#dc2626" radius={[6, 6, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                  <div className="flow-filters">
+                    <label>
+                      Periodo
+                      <select
+                        value={tipoFiltroFluxo}
+                        onChange={(event) => handleTipoFiltroChange(event.target.value)}
+                      >
+                        {OPCOES_MESES_FLUXO.map((meses) => (
+                          <option key={meses} value={String(meses)}>
+                            {meses === 1 ? "Ultimo 1 mes" : `Ultimos ${meses} meses`}
+                          </option>
+                        ))}
+                        <option value={OPCAO_PERSONALIZADA}>Periodo personalizado</option>
+                      </select>
+                    </label>
+
+                    {tipoFiltroFluxo === OPCAO_PERSONALIZADA ? (
+                      <>
+                        <label>
+                          Data inicial
+                          <input
+                            type="date"
+                            value={dataInicioFluxo}
+                            onChange={(event) => setDataInicioFluxo(event.target.value)}
+                          />
+                        </label>
+                        <label>
+                          Data final
+                          <input
+                            type="date"
+                            value={dataFimFluxo}
+                            onChange={(event) => setDataFimFluxo(event.target.value)}
+                          />
+                        </label>
+                        <button className="button primary" type="button" onClick={aplicarPeriodoPersonalizado}>
+                          Aplicar
+                        </button>
+                      </>
+                    ) : null}
                   </div>
+
+                  {fluxoMensal.length && fluxoComValores ? (
+                    <div className="chart-frame">
+                      <ResponsiveContainer width="100%" height={320}>
+                        <BarChart data={fluxoMensal}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="mesFormatado" />
+                          <YAxis tickFormatter={(valor) => formatarMoeda(valor).replace(",00", "")} width={90} />
+                          <Tooltip content={<CurrencyTooltip />} />
+                          <Legend />
+                          <Bar dataKey="receitas" name="Receitas" fill="#16a34a" radius={[6, 6, 0, 0]} />
+                          <Bar dataKey="despesas" name="Despesas" fill="#dc2626" radius={[6, 6, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="empty-chart">
+                      Nenhum lancamento encontrado para o periodo selecionado.
+                    </div>
+                  )}
                 </article>
 
                 <article className="panel chart-panel">
@@ -191,8 +274,10 @@ function Dashboard() {
                     <div className="empty-chart">Nenhuma despesa cadastrada.</div>
                   )}
                 </article>
-              </div>
+          </div>
 
+          {possuiDados ? (
+            <>
               <div className="section-grid">
                 <article className="panel">
                   <h2>Receitas por categoria</h2>

@@ -83,20 +83,28 @@ def calcular_fluxo_mensal(
     db: Session,
     data_inicio: date | None = None,
     data_fim: date | None = None,
+    ultimos_meses: int = 6,
 ) -> list[schemas.FluxoMensalItem]:
     hoje = date.today()
-    inicio_fluxo = somar_meses(primeiro_dia_do_mes(hoje), -5)
-    fim_fluxo = ultimo_dia_do_mes(hoje)
+    mes_atual = primeiro_dia_do_mes(hoje)
 
-    inicio_consulta = max(inicio_fluxo, data_inicio) if data_inicio else inicio_fluxo
-    fim_consulta = min(fim_fluxo, data_fim) if data_fim else fim_fluxo
+    if data_inicio or data_fim:
+        inicio_fluxo = primeiro_dia_do_mes(data_inicio) if data_inicio else somar_meses(mes_atual, -5)
+        fim_referencia = data_fim if data_fim else hoje
+        fim_fluxo = ultimo_dia_do_mes(fim_referencia)
+    else:
+        inicio_fluxo = somar_meses(mes_atual, -(ultimos_meses - 1))
+        fim_fluxo = ultimo_dia_do_mes(hoje)
+
+    inicio_consulta = data_inicio if data_inicio else inicio_fluxo
+    fim_consulta = data_fim if data_fim else fim_fluxo
 
     totais_por_mes = {
-        somar_meses(inicio_fluxo, indice).strftime("%Y-%m"): {
+        mes.strftime("%Y-%m"): {
             "receitas": decimal_zero(),
             "despesas": decimal_zero(),
         }
-        for indice in range(6)
+        for mes in gerar_meses(inicio_fluxo, fim_fluxo)
     }
 
     if inicio_consulta > fim_consulta:
@@ -136,19 +144,53 @@ def montar_fluxo_mensal_response(totais_por_mes: dict) -> list[schemas.FluxoMens
     ]
 
 
+def gerar_meses(data_inicio: date, data_fim: date) -> list[date]:
+    meses = []
+    mes_atual = primeiro_dia_do_mes(data_inicio)
+    ultimo_mes = primeiro_dia_do_mes(data_fim)
+
+    while mes_atual <= ultimo_mes:
+        meses.append(mes_atual)
+        mes_atual = somar_meses(mes_atual, 1)
+
+    return meses
+
+
+def resolver_periodo_resumo(
+    data_inicio: date | None,
+    data_fim: date | None,
+    ultimos_meses: int | None,
+) -> tuple[date | None, date | None]:
+    if data_inicio or data_fim or ultimos_meses is None:
+        return data_inicio, data_fim
+
+    hoje = date.today()
+    inicio_periodo = somar_meses(primeiro_dia_do_mes(hoje), -(ultimos_meses - 1))
+    fim_periodo = ultimo_dia_do_mes(hoje)
+    return inicio_periodo, fim_periodo
+
+
 def obter_resumo_financeiro(
     db: Session,
     data_inicio: date | None = None,
     data_fim: date | None = None,
+    ultimos_meses: int | None = None,
 ) -> schemas.ResumoFinanceiroResponse:
+    data_inicio_resumo, data_fim_resumo = resolver_periodo_resumo(
+        data_inicio,
+        data_fim,
+        ultimos_meses,
+    )
     hoje = date.today()
     inicio_mes_atual = primeiro_dia_do_mes(hoje)
     fim_mes_atual = ultimo_dia_do_mes(hoje)
-    inicio_mes_filtrado = max(inicio_mes_atual, data_inicio) if data_inicio else inicio_mes_atual
-    fim_mes_filtrado = min(fim_mes_atual, data_fim) if data_fim else fim_mes_atual
+    inicio_mes_filtrado = (
+        max(inicio_mes_atual, data_inicio_resumo) if data_inicio_resumo else inicio_mes_atual
+    )
+    fim_mes_filtrado = min(fim_mes_atual, data_fim_resumo) if data_fim_resumo else fim_mes_atual
 
-    total_receitas = soma_por_tipo(db, "receita", data_inicio, data_fim)
-    total_despesas = soma_por_tipo(db, "despesa", data_inicio, data_fim)
+    total_receitas = soma_por_tipo(db, "receita", data_inicio_resumo, data_fim_resumo)
+    total_despesas = soma_por_tipo(db, "despesa", data_inicio_resumo, data_fim_resumo)
     receitas_mes_atual = soma_por_tipo_em_periodo_seguro(
         db, "receita", inicio_mes_filtrado, fim_mes_filtrado
     )
@@ -160,13 +202,28 @@ def obter_resumo_financeiro(
         total_receitas=total_receitas,
         total_despesas=total_despesas,
         saldo=total_receitas - total_despesas,
-        quantidade_lancamentos=contar_lancamentos(db, data_inicio, data_fim),
+        quantidade_lancamentos=contar_lancamentos(db, data_inicio_resumo, data_fim_resumo),
         mes_atual=schemas.ResumoMesAtual(
             receitas=receitas_mes_atual,
             despesas=despesas_mes_atual,
             saldo=receitas_mes_atual - despesas_mes_atual,
         ),
-        despesas_por_categoria=resumo_por_categoria(db, "despesa", data_inicio, data_fim),
-        receitas_por_categoria=resumo_por_categoria(db, "receita", data_inicio, data_fim),
-        fluxo_mensal=calcular_fluxo_mensal(db, data_inicio, data_fim),
+        despesas_por_categoria=resumo_por_categoria(
+            db,
+            "despesa",
+            data_inicio_resumo,
+            data_fim_resumo,
+        ),
+        receitas_por_categoria=resumo_por_categoria(
+            db,
+            "receita",
+            data_inicio_resumo,
+            data_fim_resumo,
+        ),
+        fluxo_mensal=calcular_fluxo_mensal(
+            db,
+            data_inicio_resumo,
+            data_fim_resumo,
+            ultimos_meses or 6,
+        ),
     )

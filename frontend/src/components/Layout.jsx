@@ -3,7 +3,6 @@ import { NavLink, Outlet } from "react-router-dom";
 const menuItems = [
   { to: "/", label: "Dashboard" },
   { to: "/lancamentos", label: "Lancamentos" },
-  { to: "/lancamentos/novo", label: "Novo lancamento" },
   { to: "/categorias", label: "Categorias" },
 ];
 
