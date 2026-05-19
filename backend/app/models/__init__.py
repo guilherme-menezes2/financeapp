@@ -55,6 +55,7 @@ class Lancamento(Base):
     data = Column(Date, nullable=False, index=True)
     categoria_id = Column(Integer, ForeignKey("categorias.id"), nullable=False)
     cartao_id = Column(Integer, ForeignKey("cartoes.id"), nullable=True)
+    despesa_fixa = Column(Boolean, nullable=True)
     observacao = Column(Text, nullable=True)
     criado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
     atualizado_em = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -81,6 +82,9 @@ class Lancamento(Base):
 
     @property
     def categoria_despesa_fixa(self):
+        if self.despesa_fixa is not None:
+            return bool(self.despesa_fixa)
+
         return bool(self.categoria.despesa_fixa) if self.categoria else False
 
     @property

@@ -124,6 +124,7 @@ class LancamentoBase(BaseModel):
     data: date
     categoria_id: int = Field(..., gt=0)
     cartao_id: int | None = Field(default=None, gt=0)
+    despesa_fixa: bool | None = None
     observacao: str | None = None
 
     @field_validator("descricao")
@@ -147,6 +148,7 @@ class LancamentoCreate(LancamentoBase):
                     "data": "2026-05-18",
                     "categoria_id": 1,
                     "cartao_id": None,
+                    "despesa_fixa": None,
                     "observacao": "Compra mensal",
                 }
             ]
@@ -162,6 +164,7 @@ class LancamentoUpdate(BaseModel):
     data: date | None = None
     categoria_id: int | None = Field(default=None, gt=0)
     cartao_id: int | None = Field(default=None, gt=0)
+    despesa_fixa: bool | None = None
     observacao: str | None = None
 
     @field_validator("descricao")
@@ -190,6 +193,7 @@ class LancamentoResponse(BaseModel):
     cartao_id: int | None
     cartao_nome: str | None
     cartao_bandeira: str | None
+    despesa_fixa: bool | None
     observacao: str | None
     criado_em: datetime
     atualizado_em: datetime

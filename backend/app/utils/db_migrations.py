@@ -40,3 +40,8 @@ def aplicar_migracoes_sqlite():
             connection.execute(
                 text("ALTER TABLE lancamentos ADD COLUMN cartao_id INTEGER")
             )
+
+        if "despesa_fixa" not in colunas:
+            connection.execute(
+                text("ALTER TABLE lancamentos ADD COLUMN despesa_fixa BOOLEAN")
+            )

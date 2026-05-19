@@ -31,6 +31,10 @@ function montarParametros(filtros) {
   );
 }
 
+function possuiFiltroAtivo(filtros) {
+  return Object.values(filtros).some((valor) => valor !== "");
+}
+
 function Lancamentos() {
   const [lancamentos, setLancamentos] = useState([]);
   const [categorias, setCategorias] = useState([]);
@@ -40,6 +44,14 @@ function Lancamentos() {
   const [excluindoId, setExcluindoId] = useState(null);
 
   const parametros = useMemo(() => montarParametros(filtros), [filtros]);
+  const filtrosAtivos = useMemo(() => possuiFiltroAtivo(filtros), [filtros]);
+  const totalDespesasFiltradas = useMemo(
+    () =>
+      lancamentos
+        .filter((lancamento) => lancamento.tipo === "despesa")
+        .reduce((total, lancamento) => total + Number(lancamento.valor || 0), 0),
+    [lancamentos]
+  );
 
   async function carregarLancamentos() {
     try {
@@ -286,6 +298,13 @@ function Lancamentos() {
               <p>Ajuste os filtros ou cadastre um novo lancamento para comecar.</p>
             </div>
           )}
+
+          {filtrosAtivos ? (
+            <div className="table-summary">
+              <span>Total de despesas nos filtros</span>
+              <strong>{formatarMoeda(totalDespesasFiltradas)}</strong>
+            </div>
+          ) : null}
         </section>
       ) : null}
     </section>

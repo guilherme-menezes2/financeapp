@@ -19,6 +19,7 @@ const valoresIniciais = {
   data: "",
   categoria_id: "",
   cartao_id: "",
+  despesa_fixa: "",
   observacao: "",
 };
 
@@ -73,6 +74,10 @@ function montarPayload(formData) {
     data: formData.data,
     categoria_id: Number(formData.categoria_id),
     cartao_id: formData.forma_pagamento === "credito" ? Number(formData.cartao_id) : null,
+    despesa_fixa:
+      formData.tipo === "despesa" && formData.despesa_fixa !== ""
+        ? formData.despesa_fixa === "true"
+        : null,
     observacao: formData.observacao.trim() || null,
   };
 }
@@ -107,6 +112,10 @@ function LancamentoForm({ lancamentoId }) {
           data: lancamento.data || "",
           categoria_id: String(lancamento.categoria_id || ""),
           cartao_id: String(lancamento.cartao_id || ""),
+          despesa_fixa:
+            lancamento.despesa_fixa === null || lancamento.despesa_fixa === undefined
+              ? ""
+              : String(Boolean(lancamento.despesa_fixa)),
           observacao: lancamento.observacao || "",
         });
       } catch (error) {
@@ -170,7 +179,7 @@ function LancamentoForm({ lancamentoId }) {
     setFormData((dadosAtuais) => ({
       ...dadosAtuais,
       [campo]: valor,
-      ...(campo === "tipo" ? { categoria_id: "" } : {}),
+      ...(campo === "tipo" ? { categoria_id: "", despesa_fixa: "" } : {}),
       ...(campo === "forma_pagamento" && valor !== "credito" ? { cartao_id: "" } : {}),
     }));
   }
@@ -277,6 +286,20 @@ function LancamentoForm({ lancamentoId }) {
                   {cartao.nome} - {cartao.bandeira}
                 </option>
               ))}
+            </select>
+          </label>
+        ) : null}
+
+        {editando && formData.tipo === "despesa" ? (
+          <label>
+            Despesa fixa deste lancamento
+            <select
+              value={formData.despesa_fixa}
+              onChange={(event) => atualizarCampo("despesa_fixa", event.target.value)}
+            >
+              <option value="">Herdar da categoria</option>
+              <option value="true">Sim</option>
+              <option value="false">Nao</option>
             </select>
           </label>
         ) : null}

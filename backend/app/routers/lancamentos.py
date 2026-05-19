@@ -2,7 +2,7 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas
@@ -53,9 +53,26 @@ def listar_lancamentos(
         query = query.filter(models.Lancamento.forma_pagamento == forma_pagamento)
     if despesa_fixa is not None:
         query = query.filter(models.Lancamento.tipo == "despesa")
-        query = query.filter(
-            models.Lancamento.categoria.has(models.Categoria.despesa_fixa == despesa_fixa)
-        )
+        if despesa_fixa:
+            query = query.filter(
+                or_(
+                    models.Lancamento.despesa_fixa.is_(True),
+                    and_(
+                        models.Lancamento.despesa_fixa.is_(None),
+                        models.Lancamento.categoria.has(models.Categoria.despesa_fixa.is_(True)),
+                    ),
+                )
+            )
+        else:
+            query = query.filter(
+                or_(
+                    models.Lancamento.despesa_fixa.is_(False),
+                    and_(
+                        models.Lancamento.despesa_fixa.is_(None),
+                        models.Lancamento.categoria.has(models.Categoria.despesa_fixa.is_(False)),
+                    ),
+                )
+            )
     if categoria_id is not None:
         query = query.filter(models.Lancamento.categoria_id == categoria_id)
     if data_inicio is not None:
@@ -92,6 +109,7 @@ def criar_lancamento(lancamento: schemas.LancamentoCreate, db: Session = Depends
         data=lancamento.data,
         categoria_id=lancamento.categoria_id,
         cartao_id=lancamento.cartao_id,
+        despesa_fixa=lancamento.despesa_fixa if lancamento.tipo == "despesa" else None,
         observacao=lancamento.observacao,
     )
 
@@ -116,6 +134,9 @@ def atualizar_lancamento(
     cartao_id_final = dados.get("cartao_id", lancamento.cartao_id)
     obter_categoria_compativel(db, categoria_id_final, tipo_final)
     validar_cartao_do_lancamento(db, forma_pagamento_final, cartao_id_final)
+
+    if tipo_final != "despesa":
+        dados["despesa_fixa"] = None
 
     for campo, valor in dados.items():
         setattr(lancamento, campo, valor)
