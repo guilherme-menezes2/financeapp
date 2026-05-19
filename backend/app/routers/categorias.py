@@ -53,6 +53,7 @@ def criar_categoria(categoria: schemas.CategoriaCreate, db: Session = Depends(ge
         nome=nome_normalizado,
         tipo=categoria.tipo,
         cor=categoria.cor,
+        despesa_fixa=categoria.despesa_fixa if categoria.tipo == "despesa" else False,
     )
 
     db.add(nova_categoria)
@@ -73,6 +74,7 @@ def atualizar_categoria(
 
     novo_nome = normalizar_nome(dados["nome"]) if "nome" in dados else categoria.nome
     novo_tipo = dados.get("tipo", categoria.tipo)
+    nova_despesa_fixa = dados.get("despesa_fixa", categoria.despesa_fixa)
 
     if novo_tipo != categoria.tipo and categoria.lancamentos:
         raise conflict("Nao e possivel alterar o tipo de uma categoria com lancamentos vinculados.")
@@ -85,6 +87,8 @@ def atualizar_categoria(
         categoria.tipo = novo_tipo
     if "cor" in dados:
         categoria.cor = dados["cor"]
+    if "despesa_fixa" in dados or novo_tipo == "receita":
+        categoria.despesa_fixa = nova_despesa_fixa if novo_tipo == "despesa" else False
 
     db.commit()
     db.refresh(categoria)

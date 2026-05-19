@@ -611,6 +611,21 @@ p {
   padding: 4px;
 }
 
+.checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  color: #475569;
+  font-weight: 700;
+}
+
+.checkbox-row input {
+  width: 18px;
+  min-height: 18px;
+  height: 18px;
+}
+
 .category-filter-panel {
   grid-template-columns: minmax(220px, 320px);
 }

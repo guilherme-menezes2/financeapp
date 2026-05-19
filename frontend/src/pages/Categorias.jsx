@@ -14,6 +14,7 @@ const formularioInicial = {
   nome: "",
   tipo: "despesa",
   cor: "#64748b",
+  despesa_fixa: false,
 };
 
 function extrairMensagemErro(error, fallback) {
@@ -70,6 +71,7 @@ function Categorias() {
     setFormData((dadosAtuais) => ({
       ...dadosAtuais,
       [campo]: valor,
+      ...(campo === "tipo" && valor === "receita" ? { despesa_fixa: false } : {}),
     }));
   }
 
@@ -86,6 +88,7 @@ function Categorias() {
       nome: categoria.nome,
       tipo: categoria.tipo,
       cor: categoria.cor || "#64748b",
+      despesa_fixa: Boolean(categoria.despesa_fixa),
     });
     setMensagem("");
     setErro("");
@@ -108,6 +111,7 @@ function Categorias() {
       nome: formData.nome.trim(),
       tipo: formData.tipo,
       cor: formData.cor || null,
+      despesa_fixa: formData.tipo === "despesa" ? Boolean(formData.despesa_fixa) : false,
     };
 
     try {
@@ -227,6 +231,20 @@ function Categorias() {
               />
             </div>
           </label>
+
+          {formData.tipo === "despesa" ? (
+            <label>
+              Despesa fixa
+              <span className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={formData.despesa_fixa}
+                  onChange={(event) => atualizarCampo("despesa_fixa", event.target.checked)}
+                />
+                Marcar como despesa fixa
+              </span>
+            </label>
+          ) : null}
         </div>
 
         <div className="form-actions">
@@ -263,6 +281,7 @@ function Categorias() {
                   <tr>
                     <th>Nome</th>
                     <th>Tipo</th>
+                    <th>Despesa fixa</th>
                     <th>Cor</th>
                     <th>Acoes</th>
                   </tr>
@@ -277,6 +296,9 @@ function Categorias() {
                         <span className={`type-pill ${categoria.tipo === "receita" ? "income" : "expense"}`}>
                           {categoria.tipo === "receita" ? "Receita" : "Despesa"}
                         </span>
+                      </td>
+                      <td data-label="Despesa fixa">
+                        {categoria.tipo === "despesa" ? (categoria.despesa_fixa ? "Sim" : "Nao") : "-"}
                       </td>
                       <td data-label="Cor">
                         <span className="category-chip">

@@ -9,9 +9,22 @@ def aplicar_migracoes_sqlite():
 
     inspector = inspect(engine)
     tabelas = inspector.get_table_names()
+    if "categorias" in tabelas:
+        colunas_categorias = {
+            coluna["name"] for coluna in inspector.get_columns("categorias")
+        }
+
+        if "despesa_fixa" not in colunas_categorias:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "ALTER TABLE categorias "
+                        "ADD COLUMN despesa_fixa BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                )
+
     if "lancamentos" not in tabelas:
         return
-
     colunas = {coluna["name"] for coluna in inspector.get_columns("lancamentos")}
 
     with engine.begin() as connection:

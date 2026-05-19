@@ -23,10 +23,17 @@ TipoQuery = Annotated[
     Query(description="Filtra lancamentos por tipo: receita ou despesa"),
 ]
 
+FormaPagamentoQuery = Annotated[
+    schemas.FormaPagamento | None,
+    Query(description="Filtra por forma de pagamento: credito, debito, boleto ou pix"),
+]
+
 
 @router.get("", response_model=list[schemas.LancamentoResponse])
 def listar_lancamentos(
     tipo: TipoQuery = None,
+    forma_pagamento: FormaPagamentoQuery = None,
+    despesa_fixa: bool | None = Query(default=None),
     categoria_id: int | None = Query(default=None, gt=0),
     data_inicio: date | None = None,
     data_fim: date | None = None,
@@ -42,6 +49,13 @@ def listar_lancamentos(
 
     if tipo is not None:
         query = query.filter(models.Lancamento.tipo == tipo)
+    if forma_pagamento is not None:
+        query = query.filter(models.Lancamento.forma_pagamento == forma_pagamento)
+    if despesa_fixa is not None:
+        query = query.filter(models.Lancamento.tipo == "despesa")
+        query = query.filter(
+            models.Lancamento.categoria.has(models.Categoria.despesa_fixa == despesa_fixa)
+        )
     if categoria_id is not None:
         query = query.filter(models.Lancamento.categoria_id == categoria_id)
     if data_inicio is not None:

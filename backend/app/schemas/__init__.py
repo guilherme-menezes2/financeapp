@@ -13,6 +13,7 @@ class CategoriaBase(BaseModel):
     nome: str = Field(..., min_length=1, max_length=100)
     tipo: TipoLancamento
     cor: str | None = Field(default=None, max_length=20)
+    despesa_fixa: bool = False
 
     @field_validator("nome")
     @classmethod
@@ -27,8 +28,8 @@ class CategoriaCreate(CategoriaBase):
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [
-                {"nome": "Salario", "tipo": "receita", "cor": "#16a34a"},
-                {"nome": "Mercado", "tipo": "despesa", "cor": "#f97316"},
+                {"nome": "Salario", "tipo": "receita", "cor": "#16a34a", "despesa_fixa": False},
+                {"nome": "Mercado", "tipo": "despesa", "cor": "#f97316", "despesa_fixa": False},
             ]
         }
     )
@@ -38,6 +39,7 @@ class CategoriaUpdate(BaseModel):
     nome: str | None = Field(default=None, min_length=1, max_length=100)
     tipo: TipoLancamento | None = None
     cor: str | None = Field(default=None, max_length=20)
+    despesa_fixa: bool | None = None
 
     @field_validator("nome")
     @classmethod
@@ -53,7 +55,7 @@ class CategoriaUpdate(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [
-                {"nome": "Supermercado", "tipo": "despesa", "cor": "#dc2626"}
+                {"nome": "Supermercado", "tipo": "despesa", "cor": "#dc2626", "despesa_fixa": False}
             ]
         }
     )
@@ -184,6 +186,7 @@ class LancamentoResponse(BaseModel):
     categoria_id: int
     categoria_nome: str
     categoria_cor: str | None
+    categoria_despesa_fixa: bool
     cartao_id: int | None
     cartao_nome: str | None
     cartao_bandeira: str | None

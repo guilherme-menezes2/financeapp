@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -13,12 +13,17 @@ class Categoria(Base):
     nome = Column(String(100), nullable=False, index=True)
     tipo = Column(String(20), nullable=False)
     cor = Column(String(20), nullable=True)
+    despesa_fixa = Column(Boolean, nullable=False, default=False)
     criado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     lancamentos = relationship("Lancamento", back_populates="categoria")
 
     __table_args__ = (
         CheckConstraint("tipo in ('receita', 'despesa')", name="ck_categorias_tipo"),
+        CheckConstraint(
+            "tipo = 'despesa' or despesa_fixa = 0",
+            name="ck_categorias_despesa_fixa_apenas_despesa",
+        ),
         UniqueConstraint("nome", "tipo", name="uq_categorias_nome_tipo"),
     )
 
@@ -73,6 +78,10 @@ class Lancamento(Base):
     @property
     def categoria_cor(self):
         return self.categoria.cor if self.categoria else None
+
+    @property
+    def categoria_despesa_fixa(self):
+        return bool(self.categoria.despesa_fixa) if self.categoria else False
 
     @property
     def cartao_nome(self):

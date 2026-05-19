@@ -9,16 +9,16 @@ SEED_MARKER = "[seed]"
 
 
 CATEGORIAS = [
-    {"nome": "Salario", "tipo": "receita", "cor": "#16a34a"},
-    {"nome": "Venda extra", "tipo": "receita", "cor": "#2563eb"},
-    {"nome": "Reembolso", "tipo": "receita", "cor": "#0f766e"},
-    {"nome": "Supermercado", "tipo": "despesa", "cor": "#f97316"},
-    {"nome": "Conta de energia", "tipo": "despesa", "cor": "#f59e0b"},
-    {"nome": "Internet", "tipo": "despesa", "cor": "#7c3aed"},
-    {"nome": "Aluguel", "tipo": "despesa", "cor": "#dc2626"},
-    {"nome": "Combustivel", "tipo": "despesa", "cor": "#0891b2"},
-    {"nome": "Farmacia", "tipo": "despesa", "cor": "#db2777"},
-    {"nome": "Restaurante", "tipo": "despesa", "cor": "#ea580c"},
+    {"nome": "Salario", "tipo": "receita", "cor": "#16a34a", "despesa_fixa": False},
+    {"nome": "Venda extra", "tipo": "receita", "cor": "#2563eb", "despesa_fixa": False},
+    {"nome": "Reembolso", "tipo": "receita", "cor": "#0f766e", "despesa_fixa": False},
+    {"nome": "Supermercado", "tipo": "despesa", "cor": "#f97316", "despesa_fixa": False},
+    {"nome": "Conta de energia", "tipo": "despesa", "cor": "#f59e0b", "despesa_fixa": True},
+    {"nome": "Internet", "tipo": "despesa", "cor": "#7c3aed", "despesa_fixa": True},
+    {"nome": "Aluguel", "tipo": "despesa", "cor": "#dc2626", "despesa_fixa": True},
+    {"nome": "Combustivel", "tipo": "despesa", "cor": "#0891b2", "despesa_fixa": False},
+    {"nome": "Farmacia", "tipo": "despesa", "cor": "#db2777", "despesa_fixa": False},
+    {"nome": "Restaurante", "tipo": "despesa", "cor": "#ea580c", "despesa_fixa": False},
 ]
 
 CARTOES = [
@@ -60,6 +60,8 @@ def criar_categorias(db):
             existente = models.Categoria(**categoria)
             db.add(existente)
             db.flush()
+        else:
+            existente.despesa_fixa = categoria["despesa_fixa"] if categoria["tipo"] == "despesa" else False
 
         categorias_por_chave[(existente.nome, existente.tipo)] = existente
 

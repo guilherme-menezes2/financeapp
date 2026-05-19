@@ -10,6 +10,8 @@ import { formatarData, formatarMoeda } from "../utils/formatters.js";
 
 const filtrosIniciais = {
   tipo: "",
+  forma_pagamento: "",
+  despesa_fixa: "",
   categoria_id: "",
   data_inicio: "",
   data_fim: "",
@@ -124,6 +126,32 @@ function Lancamentos() {
         </label>
 
         <label>
+          Pagamento
+          <select
+            value={filtros.forma_pagamento}
+            onChange={(event) => atualizarFiltro("forma_pagamento", event.target.value)}
+          >
+            <option value="">Todos</option>
+            <option value="credito">Credito</option>
+            <option value="debito">Debito</option>
+            <option value="boleto">Boleto</option>
+            <option value="pix">Pix</option>
+          </select>
+        </label>
+
+        <label>
+          Despesa fixa
+          <select
+            value={filtros.despesa_fixa}
+            onChange={(event) => atualizarFiltro("despesa_fixa", event.target.value)}
+          >
+            <option value="">Todas</option>
+            <option value="true">Sim</option>
+            <option value="false">Nao</option>
+          </select>
+        </label>
+
+        <label>
           Categoria
           <select
             value={filtros.categoria_id}
@@ -187,6 +215,7 @@ function Lancamentos() {
                     <th>Valor</th>
                     <th>Data</th>
                     <th>Categoria</th>
+                    <th>Despesa fixa</th>
                     <th>Acoes</th>
                   </tr>
                 </thead>
@@ -226,6 +255,9 @@ function Lancamentos() {
                             />
                             {lancamento.categoria_nome}
                           </span>
+                        </td>
+                        <td data-label="Despesa fixa">
+                          {lancamento.tipo === "despesa" ? (lancamento.categoria_despesa_fixa ? "Sim" : "Nao") : "-"}
                         </td>
                         <td data-label="Acoes">
                           <div className="table-actions">
