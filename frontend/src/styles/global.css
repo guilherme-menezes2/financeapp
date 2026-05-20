@@ -259,6 +259,11 @@ p {
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.8fr);
 }
 
+.dashboard-flow-grid {
+  display: grid;
+  gap: 16px;
+}
+
 .panel {
   padding: 22px;
 }
@@ -291,6 +296,156 @@ p {
 .chart-frame {
   width: 100%;
   min-height: 300px;
+}
+
+.dashboard-insights {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.75fr);
+  gap: 16px;
+}
+
+.expense-breakdown-panel {
+  grid-row: span 2;
+}
+
+.panel-total {
+  color: var(--expense);
+  font-size: 1.25rem;
+  white-space: nowrap;
+}
+
+.panel-total.income {
+  color: var(--income);
+}
+
+.expense-breakdown-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: 22px;
+  align-items: stretch;
+}
+
+.pie-chart-frame {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 420px;
+  place-items: center;
+  padding: 6px;
+}
+
+.pie-chart-frame::after {
+  content: "Despesas";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  transform: translate(-50%, -50%);
+}
+
+.horizontal-chart-frame {
+  min-width: 0;
+  min-height: 320px;
+  padding: 8px 0;
+}
+
+.insight-list {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.insight-list.compact {
+  gap: 12px;
+}
+
+.insight-row {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.insight-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.insight-row-head span {
+  color: var(--text-strong);
+  font-weight: 900;
+}
+
+.insight-row-head strong {
+  color: var(--text-strong);
+}
+
+.insight-row small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.progress-track {
+  width: 100%;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.progress-fill.expense {
+  background: var(--expense);
+}
+
+.progress-fill.income {
+  background: var(--income);
+}
+
+.insight-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.insight-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.insight-card strong {
+  color: var(--text-strong);
+  font-size: 1.25rem;
+}
+
+.insight-card p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.insight-kicker {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.compact-category-panel {
+  align-self: start;
 }
 
 .flow-filters {
@@ -765,6 +920,11 @@ p {
     grid-template-columns: 1fr;
   }
 
+  .dashboard-insights,
+  .expense-breakdown-grid {
+    grid-template-columns: 1fr;
+  }
+
   .filters-panel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -815,6 +975,8 @@ p {
   .summary-grid,
   .section-grid,
     .dashboard-grid,
+    .dashboard-flow-grid,
+    .dashboard-insights,
     .flow-filters,
     .filters-panel,
   .form-grid,

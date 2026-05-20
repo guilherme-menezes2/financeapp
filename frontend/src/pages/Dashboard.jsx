@@ -38,6 +38,7 @@ const resumoInicial = {
 const CORES_CATEGORIAS = ["#dc2626", "#f97316", "#f59e0b", "#0f766e", "#2563eb", "#7c3aed"];
 const OPCAO_PERSONALIZADA = "personalizado";
 const OPCOES_MESES_FLUXO = [1, 3, 6, 12];
+const LIMITE_CATEGORIAS_GRAFICO = 10;
 
 function temDadosFinanceiros(resumo) {
   return (
@@ -60,6 +61,18 @@ function prepararCategorias(categorias) {
   return categorias.map((item) => ({
     categoria: item.categoria,
     total: Number(item.total || 0),
+  }));
+}
+
+function totalizarCategorias(categorias) {
+  return categorias.reduce((total, item) => total + Number(item.total || 0), 0);
+}
+
+function prepararRankingCategorias(categorias, total) {
+  return categorias.map((item, index) => ({
+    ...item,
+    cor: CORES_CATEGORIAS[index % CORES_CATEGORIAS.length],
+    percentual: total > 0 ? (Number(item.total || 0) / total) * 100 : 0,
   }));
 }
 
@@ -142,6 +155,15 @@ function Dashboard() {
   const fluxoComValores = fluxoPossuiValores(fluxoMensal);
   const despesasPorCategoria = prepararCategorias(resumo.despesas_por_categoria || []);
   const receitasPorCategoria = prepararCategorias(resumo.receitas_por_categoria || []);
+  const totalDespesasCategorias = totalizarCategorias(despesasPorCategoria);
+  const totalReceitasCategorias = totalizarCategorias(receitasPorCategoria);
+  const rankingDespesas = prepararRankingCategorias(
+    despesasPorCategoria.slice(0, LIMITE_CATEGORIAS_GRAFICO),
+    totalDespesasCategorias
+  );
+  const rankingReceitas = prepararRankingCategorias(receitasPorCategoria, totalReceitasCategorias);
+  const maiorDespesa = rankingDespesas[0];
+  const maiorReceita = rankingReceitas[0];
 
   return (
     <section className="page">
@@ -169,7 +191,7 @@ function Dashboard() {
             </div>
           ) : null}
 
-          <div className="dashboard-grid">
+          <div className="dashboard-flow-grid">
                 <article className="panel chart-panel wide">
                   <div className="panel-header">
                     <div>
@@ -239,78 +261,124 @@ function Dashboard() {
                   )}
                 </article>
 
-                <article className="panel chart-panel">
+          </div>
+
+          {possuiDados ? (
+            <>
+              <section className="dashboard-insights">
+                <article className="panel expense-breakdown-panel">
                   <div className="panel-header">
                     <div>
-                      <h2>Despesas por categoria</h2>
-                      <span>{formatarMoeda(resumo.total_despesas)}</span>
+                      <h2>Maiores despesas por categoria</h2>
+                      <span>Onde seu dinheiro esta saindo no periodo selecionado</span>
                     </div>
+                    <strong className="panel-total">{formatarMoeda(totalDespesasCategorias)}</strong>
                   </div>
-                  {despesasPorCategoria.length ? (
-                    <div className="chart-frame">
-                      <ResponsiveContainer width="100%" height={300}>
-                        <PieChart>
-                          <Pie
-                            data={despesasPorCategoria}
-                            dataKey="total"
-                            nameKey="categoria"
-                            innerRadius={58}
-                            outerRadius={96}
-                            paddingAngle={2}
-                          >
-                            {despesasPorCategoria.map((item, index) => (
-                              <Cell
-                                key={item.categoria}
-                                fill={CORES_CATEGORIAS[index % CORES_CATEGORIAS.length]}
+
+                  {rankingDespesas.length ? (
+                    <div className="expense-breakdown-grid">
+                      <div className="pie-chart-frame">
+                        <ResponsiveContainer width="100%" height={420}>
+                          <PieChart>
+                            <Pie
+                              data={rankingDespesas}
+                              dataKey="total"
+                              nameKey="categoria"
+                              innerRadius={82}
+                              outerRadius={150}
+                              paddingAngle={2}
+                              stroke="#ffffff"
+                              strokeWidth={3}
+                            >
+                              {rankingDespesas.map((item) => (
+                                <Cell key={item.categoria} fill={item.cor} />
+                              ))}
+                            </Pie>
+                            <Tooltip content={<CurrencyTooltip />} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      <div className="insight-list">
+                        {rankingDespesas.map((item) => (
+                          <div key={item.categoria} className="insight-row">
+                            <div className="insight-row-head">
+                              <span>{item.categoria}</span>
+                              <strong>{formatarMoeda(item.total)}</strong>
+                            </div>
+                            <div className="progress-track" aria-hidden="true">
+                              <span
+                                className="progress-fill expense"
+                                style={{
+                                  width: `${Math.min(item.percentual, 100)}%`,
+                                  backgroundColor: item.cor,
+                                }}
                               />
-                            ))}
-                          </Pie>
-                          <Tooltip content={<CurrencyTooltip />} />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
+                            </div>
+                            <small>{item.percentual.toFixed(1)}% das despesas</small>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ) : (
                     <div className="empty-chart">Nenhuma despesa cadastrada.</div>
                   )}
                 </article>
-          </div>
 
-          {possuiDados ? (
-            <>
-              <div className="section-grid">
-                <article className="panel">
-                  <h2>Receitas por categoria</h2>
-                  <div className="category-list">
-                    {receitasPorCategoria.length ? (
-                      receitasPorCategoria.map((item) => (
-                        <div key={item.categoria} className="category-row">
-                          <span>{item.categoria}</span>
-                          <strong>{formatarMoeda(item.total)}</strong>
-                        </div>
-                      ))
-                    ) : (
-                      <span className="muted">Nenhuma receita cadastrada.</span>
-                    )}
-                  </div>
-                </article>
+                <div className="insight-cards-grid">
+                  <article className="panel insight-card">
+                    <span className="insight-kicker">Maior despesa</span>
+                    <strong>{maiorDespesa?.categoria || "Sem dados"}</strong>
+                    <p>
+                      {maiorDespesa
+                        ? `${formatarMoeda(maiorDespesa.total)} (${maiorDespesa.percentual.toFixed(1)}% das despesas)`
+                        : "Cadastre despesas para gerar este resumo."}
+                    </p>
+                  </article>
 
-                <article className="panel">
-                  <h2>Despesas por categoria</h2>
-                  <div className="category-list">
-                    {despesasPorCategoria.length ? (
-                      despesasPorCategoria.map((item) => (
-                        <div key={item.categoria} className="category-row">
-                          <span>{item.categoria}</span>
-                          <strong>{formatarMoeda(item.total)}</strong>
-                        </div>
-                      ))
-                    ) : (
-                      <span className="muted">Nenhuma despesa cadastrada.</span>
-                    )}
+                  <article className="panel insight-card">
+                    <span className="insight-kicker">Principal receita</span>
+                    <strong>{maiorReceita?.categoria || "Sem dados"}</strong>
+                    <p>
+                      {maiorReceita
+                        ? `${formatarMoeda(maiorReceita.total)} (${maiorReceita.percentual.toFixed(1)}% das receitas)`
+                        : "Cadastre receitas para gerar este resumo."}
+                    </p>
+                  </article>
+                </div>
+
+                <article className="panel compact-category-panel">
+                  <div className="panel-header">
+                    <div>
+                      <h2>Receitas por categoria</h2>
+                      <span>Composicao das entradas do periodo</span>
+                    </div>
+                    <strong className="panel-total income">{formatarMoeda(totalReceitasCategorias)}</strong>
                   </div>
+
+                  {rankingReceitas.length ? (
+                    <div className="insight-list compact">
+                      {rankingReceitas.map((item) => (
+                        <div key={item.categoria} className="insight-row">
+                          <div className="insight-row-head">
+                            <span>{item.categoria}</span>
+                            <strong>{formatarMoeda(item.total)}</strong>
+                          </div>
+                          <div className="progress-track" aria-hidden="true">
+                            <span
+                              className="progress-fill income"
+                              style={{ width: `${Math.min(item.percentual, 100)}%` }}
+                            />
+                          </div>
+                          <small>{item.percentual.toFixed(1)}% das receitas</small>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="muted">Nenhuma receita cadastrada.</span>
+                  )}
                 </article>
-              </div>
+              </section>
             </>
           ) : null}
         </>
