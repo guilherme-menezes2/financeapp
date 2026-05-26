@@ -204,7 +204,7 @@ function LancamentoForm({ lancamentoId }) {
         await criarLancamento(payload);
       }
 
-      navigate("/lancamentos");
+      navigate("/financas/lancamentos");
     } catch (error) {
       setErro(
         extrairMensagemErro(
@@ -347,7 +347,7 @@ function LancamentoForm({ lancamentoId }) {
       </div>
 
       <div className="form-actions">
-        <Link className="button" to="/lancamentos">
+        <Link className="button" to="/financas/lancamentos">
           Cancelar
         </Link>
         <button className="button primary" type="submit" disabled={salvando}>
