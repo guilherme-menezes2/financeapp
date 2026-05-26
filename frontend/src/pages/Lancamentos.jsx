@@ -121,7 +121,7 @@ function Lancamentos() {
         title="Lancamentos"
         description="Consulte, filtre e gerencie receitas e despesas cadastradas."
         action={
-          <Link className="button primary" to="/lancamentos/novo">
+          <Link className="button primary" to="/financas/lancamentos/novo">
             Novo lancamento
           </Link>
         }
@@ -273,7 +273,7 @@ function Lancamentos() {
                         </td>
                         <td data-label="Acoes">
                           <div className="table-actions">
-                            <Link className="button small" to={`/lancamentos/${lancamento.id}/editar`}>
+                            <Link className="button small" to={`/financas/lancamentos/${lancamento.id}/editar`}>
                               Editar
                             </Link>
                             <button

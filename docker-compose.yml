@@ -8,6 +8,9 @@ services:
     environment:
       DATABASE_URL: sqlite:///data/app.db
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      YAHOO_FINANCE_BASE_URL: https://query1.finance.yahoo.com/v8/finance/chart
+      YAHOO_FINANCE_TIMEOUT_SECONDS: 10
+      INVESTIMENTOS_CACHE_MINUTES: 30
     ports:
       - "8000:8000"
     volumes:
