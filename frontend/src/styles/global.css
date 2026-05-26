@@ -103,40 +103,6 @@ textarea {
   font-size: 0.9rem;
 }
 
-.module-switcher {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-  margin-bottom: 22px;
-  padding: 8px;
-  border: 1px solid rgb(203 213 225 / 18%);
-  border-radius: 12px;
-  background: rgb(15 23 42 / 26%);
-}
-
-.module-link {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 38px;
-  padding: 0 10px;
-  border-radius: 9px;
-  color: #cbd5e1;
-  font-size: 0.92rem;
-  font-weight: 900;
-  text-decoration: none;
-}
-
-.module-link:hover {
-  color: #ffffff;
-  background: #22304a;
-}
-
-.module-link.active {
-  color: #102033;
-  background: #7dd3fc;
-}
-
 .nav-menu {
   display: grid;
   gap: 8px;
@@ -200,13 +166,6 @@ textarea {
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
-}
-
-.page-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10px;
 }
 
 h1 {
@@ -487,141 +446,6 @@ p {
 
 .compact-category-panel {
   align-self: start;
-}
-
-.investment-status-panel {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-}
-
-.investment-status-panel > div {
-  display: grid;
-  gap: 6px;
-  padding: 14px;
-  border: 1px solid var(--border-soft);
-  border-radius: 12px;
-  background: var(--surface-muted);
-}
-
-.investment-status-panel strong {
-  color: var(--text-strong);
-  font-size: 1.05rem;
-}
-
-.investment-overview-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.investment-overview-card {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-}
-
-.investment-overview-card strong {
-  color: var(--text-strong);
-  font-size: 1.15rem;
-}
-
-.investment-overview-card p {
-  margin: 0;
-  color: #475569;
-  font-size: 0.95rem;
-  line-height: 1.5;
-}
-
-.investment-overview-card .button {
-  width: fit-content;
-  margin-top: 4px;
-}
-
-.investment-form {
-  display: grid;
-  gap: 18px;
-}
-
-.investment-form-grid {
-  display: grid;
-  grid-template-columns: minmax(140px, 0.8fr) minmax(220px, 1.2fr) minmax(150px, 0.8fr) repeat(3, minmax(150px, 1fr));
-  gap: 16px;
-}
-
-.investment-form-grid label {
-  display: grid;
-  gap: 8px;
-  color: #334155;
-  font-size: 0.92rem;
-  font-weight: 800;
-}
-
-.investment-form-grid input,
-.investment-form-grid select {
-  width: 100%;
-  min-height: 42px;
-  padding: 0 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  color: var(--text);
-  background: #ffffff;
-}
-
-.investment-form-grid input:focus,
-.investment-form-grid select:focus {
-  border-color: var(--primary);
-  outline: 3px solid rgb(15 118 110 / 14%);
-}
-
-.investment-movements-panel {
-  display: grid;
-  gap: 18px;
-}
-
-.movement-form-grid {
-  display: grid;
-  grid-template-columns: minmax(120px, 0.7fr) repeat(3, minmax(140px, 1fr)) minmax(220px, 1.3fr) auto;
-  gap: 16px;
-  align-items: end;
-}
-
-.movement-form-grid label {
-  display: grid;
-  gap: 8px;
-  color: #334155;
-  font-size: 0.92rem;
-  font-weight: 800;
-}
-
-.movement-form-grid input,
-.movement-form-grid select {
-  width: 100%;
-  min-height: 42px;
-  padding: 0 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  color: var(--text);
-  background: #ffffff;
-}
-
-.movement-form-grid input:focus,
-.movement-form-grid select:focus {
-  border-color: var(--primary);
-  outline: 3px solid rgb(15 118 110 / 14%);
-}
-
-.movement-table {
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius);
-}
-
-.evolution-panel {
-  min-width: 0;
-}
-
-.evolution-chart-frame {
-  min-height: 380px;
 }
 
 .flow-filters {
@@ -966,10 +790,6 @@ p {
   overflow: hidden;
 }
 
-.table-panel > .panel-header {
-  padding: 22px 22px 0;
-}
-
 .table-scroll {
   width: 100%;
   overflow-x: auto;
@@ -1109,18 +929,6 @@ p {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .investment-form-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .investment-overview-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .movement-form-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .flow-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1140,11 +948,6 @@ p {
 
   .brand {
     margin-bottom: 18px;
-  }
-
-  .module-switcher {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin-bottom: 14px;
   }
 
   .nav-menu {
@@ -1176,10 +979,6 @@ p {
     .dashboard-insights,
     .flow-filters,
     .filters-panel,
-  .investment-form-grid,
-  .movement-form-grid,
-  .investment-overview-grid,
-  .investment-status-panel,
   .form-grid,
   .category-form-grid,
   .category-filter-panel {
@@ -1196,14 +995,6 @@ p {
 
   .form-actions {
     display: grid;
-  }
-
-  .page-actions {
-    justify-content: stretch;
-  }
-
-  .page-actions .button {
-    width: 100%;
   }
 
   .data-table,

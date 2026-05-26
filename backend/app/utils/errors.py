@@ -11,7 +11,3 @@ def bad_request(message: str) -> HTTPException:
 
 def conflict(message: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message)
-
-
-def external_service_error(message: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=message)
