@@ -30,6 +30,14 @@ class YahooProvento:
     valor_por_cota: Decimal
 
 
+@dataclass
+class YahooSplit:
+    ticker: str
+    data_evento: datetime
+    numerador: int
+    denominador: int
+
+
 def decimal_ou_none(valor) -> Decimal | None:
     if valor is None:
         return None
@@ -71,6 +79,24 @@ class YahooFinanceClient:
                     "range=10y&interval=1mo&events=div",
                 )
                 return self._converter_proventos(resultado, ticker)
+            except ValueError as error:
+                ultimo_erro = str(error)
+                continue
+
+        mensagem = ultimo_erro or "Ticker nao encontrado no Yahoo Finance."
+        raise bad_request(mensagem)
+
+    def buscar_splits(self, ticker: str) -> list[YahooSplit]:
+        simbolos = self._simbolos_para_tentar(ticker)
+        ultimo_erro = None
+
+        for simbolo in simbolos:
+            try:
+                resultado = self._buscar_resultado(
+                    simbolo,
+                    "range=10y&interval=1mo&events=split",
+                )
+                return self._converter_splits(resultado, ticker)
             except ValueError as error:
                 ultimo_erro = str(error)
                 continue
@@ -187,3 +213,38 @@ class YahooFinanceClient:
             )
 
         return sorted(proventos, key=lambda provento: provento.data_pagamento, reverse=True)
+
+    def _converter_splits(self, resultado: dict, ticker_original: str) -> list[YahooSplit]:
+        meta = resultado.get("meta") or {}
+        eventos = resultado.get("events") or {}
+        splits = eventos.get("splits") or {}
+        ticker = str(meta.get("symbol") or ticker_original).upper()
+
+        eventos_split = []
+        for evento in splits.values():
+            data_timestamp = evento.get("date")
+            numerador = evento.get("numerator")
+            denominador = evento.get("denominator")
+
+            if data_timestamp is None or numerador is None or denominador is None:
+                continue
+
+            try:
+                numerador = int(numerador)
+                denominador = int(denominador)
+            except (TypeError, ValueError):
+                continue
+
+            if numerador <= 0 or denominador <= 0:
+                continue
+
+            eventos_split.append(
+                YahooSplit(
+                    ticker=ticker,
+                    data_evento=datetime.fromtimestamp(data_timestamp, tz=timezone.utc),
+                    numerador=numerador,
+                    denominador=denominador,
+                )
+            )
+
+        return sorted(eventos_split, key=lambda evento: evento.data_evento, reverse=True)

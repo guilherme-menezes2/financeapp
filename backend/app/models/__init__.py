@@ -65,8 +65,8 @@ class Ativo(Base):
     movimentacoes = relationship("MovimentacaoAtivo", back_populates="ativo", cascade="all, delete-orphan")
 
     __table_args__ = (
-        CheckConstraint("quantidade > 0", name="ck_ativos_quantidade_positiva"),
-        CheckConstraint("preco_medio > 0", name="ck_ativos_preco_medio_positivo"),
+        CheckConstraint("quantidade >= 0", name="ck_ativos_quantidade_nao_negativa"),
+        CheckConstraint("preco_medio >= 0", name="ck_ativos_preco_medio_nao_negativo"),
     )
 
     @property
@@ -149,12 +149,14 @@ class MovimentacaoAtivo(Base):
     id = Column(Integer, primary_key=True, index=True)
     ativo_id = Column(Integer, ForeignKey("ativos.id"), nullable=False)
     tipo = Column(String(20), nullable=False)
-    quantidade = Column(Numeric(18, 6), nullable=False)
-    preco_unitario = Column(Numeric(12, 2), nullable=False)
-    valor_total = Column(Numeric(14, 2), nullable=False)
+    quantidade = Column(Numeric(18, 6), nullable=False, default=0)
+    preco_unitario = Column(Numeric(12, 2), nullable=False, default=0)
+    valor_total = Column(Numeric(14, 2), nullable=False, default=0)
     preco_medio_antes = Column(Numeric(12, 2), nullable=True)
     preco_medio_depois = Column(Numeric(12, 2), nullable=True)
     lucro_prejuizo = Column(Numeric(14, 2), nullable=True)
+    fator_numerador = Column(Integer, nullable=True)
+    fator_denominador = Column(Integer, nullable=True)
     data = Column(Date, nullable=False, index=True)
     observacao = Column(Text, nullable=True)
     criado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -162,10 +164,13 @@ class MovimentacaoAtivo(Base):
     ativo = relationship("Ativo", back_populates="movimentacoes")
 
     __table_args__ = (
-        CheckConstraint("tipo in ('compra', 'venda')", name="ck_movimentacoes_ativos_tipo"),
-        CheckConstraint("quantidade > 0", name="ck_movimentacoes_ativos_quantidade_positiva"),
-        CheckConstraint("preco_unitario > 0", name="ck_movimentacoes_ativos_preco_unitario_positivo"),
-        CheckConstraint("valor_total > 0", name="ck_movimentacoes_ativos_valor_total_positivo"),
+        CheckConstraint("tipo in ('compra', 'venda', 'split')", name="ck_movimentacoes_ativos_tipo"),
+        CheckConstraint("quantidade >= 0", name="ck_movimentacoes_ativos_quantidade_nao_negativa"),
+        CheckConstraint(
+            "preco_unitario >= 0",
+            name="ck_movimentacoes_ativos_preco_unitario_nao_negativo",
+        ),
+        CheckConstraint("valor_total >= 0", name="ck_movimentacoes_ativos_valor_total_nao_negativo"),
     )
 
 

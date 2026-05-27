@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 TipoLancamento = Literal["receita", "despesa"]
@@ -118,8 +118,6 @@ class CartaoResponse(CartaoBase):
 
 class AtivoBase(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=20)
-    quantidade: Decimal = Field(..., gt=0, max_digits=18, decimal_places=6)
-    preco_medio: Decimal = Field(..., gt=0, max_digits=12, decimal_places=2)
     data_inicial: date
     nome: str | None = Field(default=None, max_length=120)
     tipo: str | None = Field(default=None, max_length=40)
@@ -148,8 +146,6 @@ class AtivoCreate(AtivoBase):
             "examples": [
                 {
                     "ticker": "CPTS11",
-                    "quantidade": "10",
-                    "preco_medio": "85.20",
                     "data_inicial": "2026-05-26",
                     "nome": "CPTS11",
                     "tipo": "fii",
@@ -161,8 +157,6 @@ class AtivoCreate(AtivoBase):
 
 class AtivoUpdate(BaseModel):
     ticker: str | None = Field(default=None, min_length=1, max_length=20)
-    quantidade: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=6)
-    preco_medio: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
     data_inicial: date | None = None
     nome: str | None = Field(default=None, max_length=120)
     tipo: str | None = Field(default=None, max_length=40)
@@ -224,6 +218,10 @@ class AtualizacaoAtivosResponse(BaseModel):
     falhas: int
     tickers_atualizados: list[str]
     erros: list[dict]
+    splits_atualizados: int = 0
+    splits_falhas: int = 0
+    splits_criados: int = 0
+    splits_erros: list[dict] = Field(default_factory=list)
     proventos_atualizados: int = 0
     proventos_falhas: int = 0
     proventos_criados: int = 0
@@ -265,6 +263,22 @@ class AtualizacaoProventosResponse(BaseModel):
     erros: list[dict]
 
 
+class AtualizacaoSplitsAtivoResponse(BaseModel):
+    ticker: str
+    splits_encontrados: int
+    splits_criados: int
+    splits_ignorados: int
+
+
+class AtualizacaoSplitsResponse(BaseModel):
+    total_ativos: int
+    atualizados: int
+    falhas: int
+    total_splits_criados: int
+    resultados: list[AtualizacaoSplitsAtivoResponse]
+    erros: list[dict]
+
+
 class SnapshotCarteiraResponse(BaseModel):
     id: int
     data_referencia: date
@@ -279,11 +293,39 @@ class SnapshotCarteiraResponse(BaseModel):
 
 
 class MovimentacaoAtivoBase(BaseModel):
-    tipo: Literal["compra", "venda"]
-    quantidade: Decimal = Field(..., gt=0, max_digits=18, decimal_places=6)
-    preco_unitario: Decimal = Field(..., gt=0, max_digits=12, decimal_places=2)
+    tipo: Literal["compra", "venda", "split"]
+    quantidade: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=6)
+    preco_unitario: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
+    fator_numerador: int | None = Field(default=None, gt=0)
+    fator_denominador: int | None = Field(default=None, gt=0)
     data: date
     observacao: str | None = None
+
+    @field_validator("observacao")
+    @classmethod
+    def normalizar_observacao(cls, valor: str | None) -> str | None:
+        if valor is None:
+            return valor
+
+        valor_normalizado = " ".join(valor.strip().split())
+        return valor_normalizado or None
+
+    @model_validator(mode="after")
+    def validar_payload(self):
+        tipo = self.tipo
+
+        if tipo == "split":
+            if self.fator_numerador is None or self.fator_denominador is None:
+                raise ValueError("Informe o fator numerador e denominador do split.")
+            if self.quantidade is not None or self.preco_unitario is not None:
+                raise ValueError("Split nao deve receber quantidade nem preco unitario.")
+        else:
+            if self.quantidade is None or self.preco_unitario is None:
+                raise ValueError("Compra e venda exigem quantidade e preco unitario.")
+            if self.fator_numerador is not None or self.fator_denominador is not None:
+                raise ValueError("Compra e venda nao devem receber fator de split.")
+
+        return self
 
 
 class MovimentacaoAtivoCreate(MovimentacaoAtivoBase):
@@ -294,13 +336,21 @@ class MovimentacaoAtivoCreate(MovimentacaoAtivoBase):
                     "tipo": "compra",
                     "quantidade": "10",
                     "preco_unitario": "8.25",
+                    "fator_numerador": None,
+                    "fator_denominador": None,
                     "data": "2026-05-26",
                     "observacao": "Compra mensal",
+                },
+                {
+                    "tipo": "split",
+                    "fator_numerador": 10,
+                    "fator_denominador": 1,
+                    "data": "2026-05-26",
+                    "observacao": "Desdobramento 10:1",
                 }
             ]
         }
     )
-
 
 class MovimentacaoAtivoResponse(BaseModel):
     id: int
@@ -312,11 +362,39 @@ class MovimentacaoAtivoResponse(BaseModel):
     preco_medio_antes: Decimal | None
     preco_medio_depois: Decimal | None
     lucro_prejuizo: Decimal | None
+    fator_numerador: int | None
+    fator_denominador: int | None
     data: date
     observacao: str | None
     criado_em: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MovimentacaoAtivoUpdate(MovimentacaoAtivoBase):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "tipo": "venda",
+                    "quantidade": "5",
+                    "preco_unitario": "10.40",
+                    "fator_numerador": None,
+                    "fator_denominador": None,
+                    "data": "2026-05-27",
+                    "observacao": "Ajuste da operacao",
+                },
+                {
+                    "tipo": "split",
+                    "fator_numerador": 2,
+                    "fator_denominador": 1,
+                    "data": "2026-05-27",
+                    "observacao": "Ajuste do split",
+                }
+            ]
+        }
+    )
+
 
 
 class LancamentoBase(BaseModel):

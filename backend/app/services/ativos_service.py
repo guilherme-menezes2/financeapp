@@ -94,6 +94,18 @@ def criar_snapshot_carteira(db: Session) -> models.SnapshotCarteira:
     return snapshot
 
 
+def listar_movimentacoes_ordenadas(
+    db: Session,
+    ativo_id: int,
+) -> list[models.MovimentacaoAtivo]:
+    return (
+        db.query(models.MovimentacaoAtivo)
+        .filter(models.MovimentacaoAtivo.ativo_id == ativo_id)
+        .order_by(models.MovimentacaoAtivo.data.asc(), models.MovimentacaoAtivo.id.asc())
+        .all()
+    )
+
+
 def listar_snapshots_carteira(
     db: Session,
     limite: int = 90,
@@ -119,6 +131,279 @@ def listar_movimentacoes_ativo(
     )
 
 
+def recalcular_movimentacoes_e_posicao(
+    ativo: models.Ativo,
+    movimentacoes: list[models.MovimentacaoAtivo],
+) -> None:
+    quantidade_atual = Decimal("0")
+    preco_medio_atual = Decimal("0")
+
+    for movimentacao in movimentacoes:
+        quantidade = Decimal(movimentacao.quantidade)
+        preco_unitario = Decimal(movimentacao.preco_unitario)
+        valor_total = quantidade * preco_unitario
+
+        movimentacao.valor_total = Decimal("0") if movimentacao.tipo == "split" else valor_total
+        movimentacao.preco_medio_antes = preco_medio_atual
+
+        if movimentacao.tipo == "compra":
+            nova_quantidade = quantidade_atual + quantidade
+            novo_preco_medio = (
+                ((quantidade_atual * preco_medio_atual) + valor_total) / nova_quantidade
+                if nova_quantidade
+                else Decimal("0")
+            )
+            movimentacao.lucro_prejuizo = None
+        elif movimentacao.tipo == "venda":
+            if quantidade > quantidade_atual:
+                raise bad_request(
+                    f"A movimentacao em {movimentacao.data} deixa a posicao do ativo negativa."
+                )
+
+            nova_quantidade = quantidade_atual - quantidade
+            novo_preco_medio = preco_medio_atual if nova_quantidade else Decimal("0")
+            movimentacao.lucro_prejuizo = (
+                (preco_unitario - preco_medio_atual) * quantidade
+                if quantidade_atual
+                else Decimal("0")
+            )
+        elif movimentacao.tipo == "split":
+            if quantidade_atual <= 0:
+                raise bad_request(
+                    f"O split em {movimentacao.data} nao pode ser aplicado sem posicao anterior."
+                )
+
+            if not movimentacao.fator_numerador or not movimentacao.fator_denominador:
+                raise bad_request("Split exige fator numerador e denominador.")
+
+            fator = Decimal(movimentacao.fator_numerador) / Decimal(movimentacao.fator_denominador)
+            nova_quantidade = quantidade_atual * fator
+            novo_preco_medio = (
+                preco_medio_atual / fator
+                if fator
+                else Decimal("0")
+            )
+            movimentacao.quantidade = Decimal("0")
+            movimentacao.preco_unitario = Decimal("0")
+            movimentacao.valor_total = Decimal("0")
+            movimentacao.lucro_prejuizo = None
+        else:
+            raise bad_request("Tipo de movimentacao deve ser compra, venda ou split.")
+
+        movimentacao.preco_medio_depois = novo_preco_medio
+        quantidade_atual = nova_quantidade
+        preco_medio_atual = novo_preco_medio
+
+    ativo.quantidade = quantidade_atual
+    ativo.preco_medio = preco_medio_atual
+
+
+def obter_quantidade_ativo_na_data(
+    db: Session,
+    ativo_id: int,
+    data_referencia: date,
+) -> Decimal:
+    quantidade = Decimal("0")
+
+    for movimentacao in listar_movimentacoes_ordenadas(db, ativo_id):
+        if movimentacao.data > data_referencia:
+            break
+
+        if movimentacao.tipo == "compra":
+            quantidade += Decimal(movimentacao.quantidade)
+        elif movimentacao.tipo == "venda":
+            quantidade -= Decimal(movimentacao.quantidade)
+        elif movimentacao.tipo == "split":
+            if not movimentacao.fator_numerador or not movimentacao.fator_denominador:
+                continue
+            fator = Decimal(movimentacao.fator_numerador) / Decimal(movimentacao.fator_denominador)
+            quantidade *= fator
+
+    return max(quantidade, Decimal("0"))
+
+
+def obter_fator_splits_posteriores(
+    db: Session,
+    ativo_id: int,
+    data_referencia: date,
+) -> Decimal:
+    fator_total = Decimal("1")
+
+    for movimentacao in listar_movimentacoes_ordenadas(db, ativo_id):
+        if movimentacao.tipo != "split":
+            continue
+        if movimentacao.data <= data_referencia:
+            continue
+        if not movimentacao.fator_numerador or not movimentacao.fator_denominador:
+            continue
+
+        fator_total *= Decimal(movimentacao.fator_numerador) / Decimal(movimentacao.fator_denominador)
+
+    return fator_total
+
+
+def listar_splits_posteriores(
+    db: Session,
+    ativo_id: int,
+    data_referencia: date,
+) -> list[models.MovimentacaoAtivo]:
+    return [
+        movimentacao
+        for movimentacao in listar_movimentacoes_ordenadas(db, ativo_id)
+        if movimentacao.tipo == "split" and movimentacao.data > data_referencia
+    ]
+
+
+def calcular_mediana_decimal(valores: list[Decimal]) -> Decimal | None:
+    if not valores:
+        return None
+
+    valores_ordenados = sorted(valores)
+    meio = len(valores_ordenados) // 2
+
+    if len(valores_ordenados) % 2 == 1:
+        return valores_ordenados[meio]
+
+    return (valores_ordenados[meio - 1] + valores_ordenados[meio]) / 2
+
+
+def ajustar_valor_por_cota_com_splits(
+    db: Session,
+    ativo_id: int,
+    data_com: date,
+    valor_por_cota: Decimal,
+    proventos_yahoo,
+) -> Decimal:
+    splits_posteriores = listar_splits_posteriores(db, ativo_id, data_com)
+    if not splits_posteriores:
+        return valor_por_cota
+
+    fator_ajuste = Decimal("1")
+    for split in splits_posteriores:
+        if not split.fator_numerador or not split.fator_denominador:
+            continue
+        fator_ajuste *= Decimal(split.fator_numerador) / Decimal(split.fator_denominador)
+
+    if fator_ajuste == Decimal("1"):
+        return valor_por_cota
+
+    ultima_data_split = max(split.data for split in splits_posteriores)
+    referencias = [
+        Decimal(provento.valor_por_cota)
+        for provento in proventos_yahoo
+        if (provento.data_pagamento.date() - timedelta(days=1)) >= ultima_data_split
+    ]
+    mediana_referencia = calcular_mediana_decimal(referencias)
+    if mediana_referencia is None:
+        return valor_por_cota * fator_ajuste
+
+    limite_valor_ajustado = mediana_referencia * ((fator_ajuste + Decimal("1")) / Decimal("2"))
+    if valor_por_cota <= limite_valor_ajustado:
+        return valor_por_cota * fator_ajuste
+
+    return valor_por_cota
+
+
+def existe_split_mesmo_evento(
+    db: Session,
+    ativo_id: int,
+    data_evento: date,
+    fator_numerador: int,
+    fator_denominador: int,
+) -> bool:
+    return (
+        db.query(models.MovimentacaoAtivo)
+        .filter(
+            models.MovimentacaoAtivo.ativo_id == ativo_id,
+            models.MovimentacaoAtivo.tipo == "split",
+            models.MovimentacaoAtivo.data == data_evento,
+            models.MovimentacaoAtivo.fator_numerador == fator_numerador,
+            models.MovimentacaoAtivo.fator_denominador == fator_denominador,
+        )
+        .first()
+        is not None
+    )
+
+
+def remover_splits_yahoo(db: Session, ativo: models.Ativo) -> int:
+    splits = (
+        db.query(models.MovimentacaoAtivo)
+        .filter(
+            models.MovimentacaoAtivo.ativo_id == ativo.id,
+            models.MovimentacaoAtivo.tipo == "split",
+            models.MovimentacaoAtivo.observacao.like("Split importado do Yahoo Finance%"),
+        )
+        .all()
+    )
+
+    for split in splits:
+        db.delete(split)
+
+    return len(splits)
+
+
+def recalcular_proventos_existentes_ativo(
+    db: Session,
+    ativo: models.Ativo,
+) -> None:
+    proventos = (
+        db.query(models.ProventoAtivo)
+        .filter(models.ProventoAtivo.ativo_id == ativo.id)
+        .all()
+    )
+
+    for provento in proventos:
+        data_base = provento.data_com or provento.data_pagamento
+        if data_base is None or data_base < ativo.data_inicial:
+            db.delete(provento)
+            continue
+
+        quantidade_base = obter_quantidade_ativo_na_data(db, ativo.id, data_base)
+        if quantidade_base <= 0:
+            db.delete(provento)
+            continue
+
+        provento.quantidade_base = quantidade_base
+        provento.valor_estimado = provento.valor_por_cota * quantidade_base
+
+
+def ativo_possui_splits(db: Session, ativo_id: int) -> bool:
+    return (
+        db.query(models.MovimentacaoAtivo.id)
+        .filter(
+            models.MovimentacaoAtivo.ativo_id == ativo_id,
+            models.MovimentacaoAtivo.tipo == "split",
+        )
+        .first()
+        is not None
+    )
+
+
+def sincronizar_eventos_historicos_ativo(
+    db: Session,
+    ativo: models.Ativo,
+    incluir_splits_automaticos: bool = True,
+    reimportar_proventos: bool = False,
+) -> None:
+    recalcular_movimentacoes_e_posicao(ativo, listar_movimentacoes_ordenadas(db, ativo.id))
+    resultado_splits = None
+
+    if incluir_splits_automaticos:
+        resultado_splits = atualizar_splits_ativo(db, ativo)
+        recalcular_movimentacoes_e_posicao(ativo, listar_movimentacoes_ordenadas(db, ativo.id))
+
+    if (
+        reimportar_proventos
+        or ativo_possui_splits(db, ativo.id)
+        or (
+        resultado_splits and (resultado_splits["splits_criados"] or resultado_splits["splits_removidos"])
+        )
+    ):
+        atualizar_proventos_ativo(db, ativo)
+    else:
+        recalcular_proventos_existentes_ativo(db, ativo)
+
+
 def buscar_movimentacao_ou_404(
     db: Session,
     movimentacao_id: int,
@@ -139,62 +424,95 @@ def criar_movimentacao_ativo(
     db: Session,
     ativo: models.Ativo,
     tipo: str,
-    quantidade: Decimal,
-    preco_unitario: Decimal,
+    quantidade: Decimal | None,
+    preco_unitario: Decimal | None,
     data_movimentacao: date,
+    fator_numerador: int | None = None,
+    fator_denominador: int | None = None,
     observacao: str | None = None,
+    sincronizar_splits_automaticos: bool = True,
+    sincronizar_historico: bool = True,
 ) -> models.MovimentacaoAtivo:
-    preco_medio_antes = ativo.preco_medio
-    quantidade_antes = ativo.quantidade
-    valor_total = quantidade * preco_unitario
-    lucro_prejuizo = None
-    ultima_movimentacao = (
-        db.query(models.MovimentacaoAtivo)
-        .filter(models.MovimentacaoAtivo.ativo_id == ativo.id)
-        .order_by(models.MovimentacaoAtivo.data.desc(), models.MovimentacaoAtivo.id.desc())
-        .first()
-    )
-
-    if ultima_movimentacao and data_movimentacao < ultima_movimentacao.data:
-        raise bad_request(
-            "Cadastre movimentacoes em ordem cronologica para manter o preco medio consistente."
-        )
-
-    if tipo == "compra":
-        nova_quantidade = quantidade_antes + quantidade
-        novo_preco_medio = (
-            ((quantidade_antes * preco_medio_antes) + valor_total) / nova_quantidade
-            if nova_quantidade
-            else preco_unitario
-        )
-    elif tipo == "venda":
-        if quantidade >= quantidade_antes:
-            raise bad_request(
-                "Nao e permitido vender quantidade igual ou maior que a posicao atual do ativo."
-            )
-
-        nova_quantidade = quantidade_antes - quantidade
-        novo_preco_medio = preco_medio_antes
-        lucro_prejuizo = (preco_unitario - preco_medio_antes) * quantidade
+    if tipo == "split":
+        if fator_numerador is None or fator_denominador is None:
+            raise bad_request("Informe o fator numerador e denominador do split.")
+        if fator_numerador <= 0 or fator_denominador <= 0:
+            raise bad_request("O fator do split deve ser maior que zero.")
+        if obter_quantidade_ativo_na_data(db, ativo.id, data_movimentacao) <= 0:
+            raise bad_request("Nao e possivel registrar split sem posicao do ativo na data informada.")
+        quantidade_movimentacao = Decimal("0")
+        preco_movimentacao = Decimal("0")
     else:
-        raise bad_request("Tipo de movimentacao deve ser compra ou venda.")
+        if quantidade is None or preco_unitario is None:
+            raise bad_request("Compra e venda exigem quantidade e preco unitario.")
+        quantidade_movimentacao = quantidade
+        preco_movimentacao = preco_unitario
 
     movimentacao = models.MovimentacaoAtivo(
         ativo_id=ativo.id,
         tipo=tipo,
-        quantidade=quantidade,
-        preco_unitario=preco_unitario,
-        valor_total=valor_total,
-        preco_medio_antes=preco_medio_antes,
-        preco_medio_depois=novo_preco_medio,
-        lucro_prejuizo=lucro_prejuizo,
+        quantidade=quantidade_movimentacao,
+        preco_unitario=preco_movimentacao,
+        valor_total=quantidade_movimentacao * preco_movimentacao,
+        fator_numerador=fator_numerador,
+        fator_denominador=fator_denominador,
         data=data_movimentacao,
         observacao=observacao,
     )
 
-    ativo.quantidade = nova_quantidade
-    ativo.preco_medio = novo_preco_medio
     db.add(movimentacao)
+    db.flush()
+
+    if sincronizar_historico:
+        sincronizar_eventos_historicos_ativo(
+            db,
+            ativo,
+            incluir_splits_automaticos=sincronizar_splits_automaticos and tipo != "split",
+            reimportar_proventos=tipo == "split",
+        )
+    return movimentacao
+
+
+def atualizar_movimentacao_ativo(
+    db: Session,
+    movimentacao: models.MovimentacaoAtivo,
+    tipo: str,
+    quantidade: Decimal | None,
+    preco_unitario: Decimal | None,
+    data_movimentacao: date,
+    fator_numerador: int | None = None,
+    fator_denominador: int | None = None,
+    observacao: str | None = None,
+    sincronizar_splits_automaticos: bool = True,
+) -> models.MovimentacaoAtivo:
+    ativo = buscar_ativo_ou_404(db, movimentacao.ativo_id)
+    tipo_anterior = movimentacao.tipo
+    movimentacao.tipo = tipo
+    if tipo == "split":
+        if fator_numerador is None or fator_denominador is None:
+            raise bad_request("Informe o fator numerador e denominador do split.")
+        if fator_numerador <= 0 or fator_denominador <= 0:
+            raise bad_request("O fator do split deve ser maior que zero.")
+        movimentacao.quantidade = Decimal("0")
+        movimentacao.preco_unitario = Decimal("0")
+        movimentacao.fator_numerador = fator_numerador
+        movimentacao.fator_denominador = fator_denominador
+    else:
+        if quantidade is None or preco_unitario is None:
+            raise bad_request("Compra e venda exigem quantidade e preco unitario.")
+        movimentacao.quantidade = quantidade
+        movimentacao.preco_unitario = preco_unitario
+        movimentacao.fator_numerador = None
+        movimentacao.fator_denominador = None
+    movimentacao.data = data_movimentacao
+    movimentacao.observacao = observacao
+    db.flush()
+    sincronizar_eventos_historicos_ativo(
+        db,
+        ativo,
+        incluir_splits_automaticos=sincronizar_splits_automaticos and tipo != "split",
+        reimportar_proventos=tipo == "split" or tipo_anterior == "split",
+    )
     return movimentacao
 
 
@@ -203,39 +521,14 @@ def excluir_movimentacao_ativo(
     movimentacao: models.MovimentacaoAtivo,
 ) -> None:
     ativo = buscar_ativo_ou_404(db, movimentacao.ativo_id)
-    ultima_movimentacao = (
-        db.query(models.MovimentacaoAtivo)
-        .filter(models.MovimentacaoAtivo.ativo_id == ativo.id)
-        .order_by(models.MovimentacaoAtivo.data.desc(), models.MovimentacaoAtivo.id.desc())
-        .first()
-    )
-
-    if ultima_movimentacao and ultima_movimentacao.id != movimentacao.id:
-        raise bad_request(
-            "Para manter a posicao consistente, exclua primeiro as movimentacoes mais recentes."
-        )
-
-    if movimentacao.tipo == "compra":
-        if movimentacao.quantidade >= ativo.quantidade:
-            raise bad_request(
-                "Nao e possivel excluir esta compra porque a posicao atual ficaria negativa."
-            )
-
-        nova_quantidade = ativo.quantidade - movimentacao.quantidade
-        custo_atual = ativo.quantidade * ativo.preco_medio
-        custo_removido = movimentacao.quantidade * movimentacao.preco_unitario
-
-        if nova_quantidade:
-            ativo.preco_medio = (custo_atual - custo_removido) / nova_quantidade
-        else:
-            ativo.preco_medio = movimentacao.preco_medio_antes or ativo.preco_medio
-
-        ativo.quantidade = nova_quantidade
-    elif movimentacao.tipo == "venda":
-        ativo.quantidade = ativo.quantidade + movimentacao.quantidade
-        ativo.preco_medio = movimentacao.preco_medio_antes or ativo.preco_medio
-
     db.delete(movimentacao)
+    db.flush()
+    sincronizar_eventos_historicos_ativo(
+        db,
+        ativo,
+        incluir_splits_automaticos=movimentacao.tipo != "split",
+        reimportar_proventos=movimentacao.tipo == "split",
+    )
 
 
 def atualizar_cotacao_ativo(
@@ -273,6 +566,87 @@ def atualizar_cotacao_ativo(
     return ativo
 
 
+def atualizar_splits_ativo(db: Session, ativo: models.Ativo) -> dict:
+    splits_yahoo = YahooFinanceClient().buscar_splits(ativo.ticker)
+    removidos = remover_splits_yahoo(db, ativo)
+    db.flush()
+    recalcular_movimentacoes_e_posicao(ativo, listar_movimentacoes_ordenadas(db, ativo.id))
+    criados = 0
+    ignorados = removidos
+
+    for split in sorted(splits_yahoo, key=lambda evento: evento.data_evento):
+        data_evento = split.data_evento.date()
+        if data_evento < ativo.data_inicial:
+            ignorados += 1
+            continue
+        if obter_quantidade_ativo_na_data(db, ativo.id, data_evento) <= 0:
+            ignorados += 1
+            continue
+        if existe_split_mesmo_evento(
+            db,
+            ativo.id,
+            data_evento,
+            split.numerador,
+            split.denominador,
+        ):
+            ignorados += 1
+            continue
+
+        criar_movimentacao_ativo(
+            db=db,
+            ativo=ativo,
+            tipo="split",
+            quantidade=None,
+            preco_unitario=None,
+            data_movimentacao=data_evento,
+            fator_numerador=split.numerador,
+            fator_denominador=split.denominador,
+            observacao=f"Split importado do Yahoo Finance ({split.numerador}:{split.denominador})",
+            sincronizar_splits_automaticos=False,
+            sincronizar_historico=False,
+        )
+        criados += 1
+
+    recalcular_movimentacoes_e_posicao(ativo, listar_movimentacoes_ordenadas(db, ativo.id))
+
+    return {
+        "ticker": ativo.ticker,
+        "splits_encontrados": len(splits_yahoo),
+        "splits_criados": criados,
+        "splits_ignorados": ignorados,
+        "splits_removidos": removidos,
+    }
+
+
+def atualizar_splits_todos_ativos(db: Session) -> dict:
+    ativos = db.query(models.Ativo).order_by(models.Ativo.ticker.asc()).all()
+    atualizados = []
+    falhas = []
+    total_criados = 0
+
+    for ativo in ativos:
+        try:
+            resultado = atualizar_splits_ativo(db, ativo)
+            db.commit()
+            atualizados.append(resultado)
+            total_criados += resultado["splits_criados"]
+        except HTTPException as error:
+            db.rollback()
+            falhas.append({"ticker": ativo.ticker, "erro": error.detail})
+        except Exception:
+            db.rollback()
+            falhas.append({"ticker": ativo.ticker, "erro": "Erro inesperado ao atualizar splits."})
+
+    return {
+        "total_ativos": len(ativos),
+        "atualizados": len(atualizados),
+        "falhas": len(falhas),
+        "total_splits_criados": total_criados,
+        "resultados": atualizados,
+        "erros": falhas,
+    }
+
+
 def atualizar_todos_ativos(db: Session, force: bool = True) -> dict:
     ativos = db.query(models.Ativo).order_by(models.Ativo.ticker.asc()).all()
     atualizados = []
@@ -290,6 +664,8 @@ def atualizar_todos_ativos(db: Session, force: bool = True) -> dict:
         except Exception:
             db.rollback()
             falhas.append({"ticker": ativo.ticker, "erro": "Erro inesperado ao atualizar ativo."})
+
+    resultado_splits = atualizar_splits_todos_ativos(db) if ativos else None
 
     if atualizados:
         try:
@@ -310,6 +686,10 @@ def atualizar_todos_ativos(db: Session, force: bool = True) -> dict:
         "proventos_falhas": resultado_proventos["falhas"] if resultado_proventos else 0,
         "proventos_criados": resultado_proventos["total_proventos_criados"] if resultado_proventos else 0,
         "proventos_erros": resultado_proventos["erros"] if resultado_proventos else [],
+        "splits_atualizados": resultado_splits["atualizados"] if resultado_splits else 0,
+        "splits_falhas": resultado_splits["falhas"] if resultado_splits else 0,
+        "splits_criados": resultado_splits["total_splits_criados"] if resultado_splits else 0,
+        "splits_erros": resultado_splits["erros"] if resultado_splits else [],
     }
 
 
@@ -369,16 +749,31 @@ def remover_proventos_yahoo(db: Session, ativo: models.Ativo) -> int:
 def atualizar_proventos_ativo(db: Session, ativo: models.Ativo) -> dict:
     proventos_yahoo = YahooFinanceClient().buscar_proventos(ativo.ticker)
     removidos = remover_proventos_yahoo(db, ativo)
+    db.flush()
     proventos_validos = [
         provento
         for provento in proventos_yahoo
         if (provento.data_pagamento.date() - timedelta(days=1)) >= ativo.data_inicial
     ]
     criados = 0
+    ignorados_por_quantidade = 0
 
     for provento_yahoo in proventos_validos:
         data_com = provento_yahoo.data_pagamento.date() - timedelta(days=1)
         valor_por_cota = provento_yahoo.valor_por_cota
+        quantidade_base = obter_quantidade_ativo_na_data(db, ativo.id, data_com)
+
+        if quantidade_base <= 0:
+            ignorados_por_quantidade += 1
+            continue
+
+        valor_por_cota_ajustado = ajustar_valor_por_cota_com_splits(
+            db,
+            ativo.id,
+            data_com,
+            valor_por_cota,
+            proventos_yahoo,
+        )
 
         provento = models.ProventoAtivo(
             ativo_id=ativo.id,
@@ -386,9 +781,9 @@ def atualizar_proventos_ativo(db: Session, ativo: models.Ativo) -> dict:
             tipo=provento_yahoo.tipo,
             data_com=data_com,
             data_pagamento=None,
-            valor_por_cota=valor_por_cota,
-            quantidade_base=ativo.quantidade,
-            valor_estimado=valor_por_cota * ativo.quantidade,
+            valor_por_cota=valor_por_cota_ajustado,
+            quantidade_base=quantidade_base,
+            valor_estimado=valor_por_cota_ajustado * quantidade_base,
             fonte="yahoo_finance",
         )
         db.add(provento)
@@ -398,7 +793,7 @@ def atualizar_proventos_ativo(db: Session, ativo: models.Ativo) -> dict:
         "ticker": ativo.ticker,
         "proventos_encontrados": len(proventos_yahoo),
         "proventos_validos": len(proventos_validos),
-        "proventos_ignorados": len(proventos_yahoo) - len(proventos_validos),
+        "proventos_ignorados": (len(proventos_yahoo) - len(proventos_validos)) + ignorados_por_quantidade,
         "proventos_criados": criados,
         "proventos_removidos": removidos,
         "proventos_ajustados": 0,

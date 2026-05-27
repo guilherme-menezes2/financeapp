@@ -44,6 +44,11 @@ export async function atualizarProventosAtivos() {
   return data;
 }
 
+export async function atualizarSplitsAtivos() {
+  const { data } = await api.post("/ativos/splits/atualizar");
+  return data;
+}
+
 export async function listarSnapshotsCarteira() {
   const { data } = await api.get("/ativos/snapshots", {
     params: { limite: 90 },
@@ -63,6 +68,11 @@ export async function listarMovimentacoesAtivo(ativoId) {
 
 export async function criarMovimentacaoAtivo(ativoId, payload) {
   const { data } = await api.post(`/ativos/${ativoId}/movimentacoes`, payload);
+  return data;
+}
+
+export async function atualizarMovimentacaoAtivo(movimentacaoId, payload) {
+  const { data } = await api.put(`/ativos/movimentacoes/${movimentacaoId}`, payload);
   return data;
 }
 

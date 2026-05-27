@@ -1044,6 +1044,11 @@ p {
   background: var(--expense-bg);
 }
 
+.type-pill.neutral {
+  color: #1e3a8a;
+  background: #dbeafe;
+}
+
 .category-chip {
   color: #334155;
   background: #f1f5f9;

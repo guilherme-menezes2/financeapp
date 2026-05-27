@@ -19,6 +19,7 @@ import {
   atualizarAtivo,
   atualizarCotacaoAtivo,
   atualizarCotacoesAtivos,
+  atualizarMovimentacaoAtivo,
   atualizarProventosAtivos,
   criarMovimentacaoAtivo,
   criarAtivo,
@@ -43,8 +44,6 @@ const formularioInicial = {
   ticker: "",
   nome: "",
   tipo: "",
-  quantidade: "",
-  preco_medio: "",
   data_inicial: new Date().toISOString().slice(0, 10),
 };
 
@@ -52,6 +51,8 @@ const movimentacaoInicial = {
   tipo: "compra",
   quantidade: "",
   preco_unitario: "",
+  fator_numerador: "",
+  fator_denominador: "",
   data: new Date().toISOString().slice(0, 10),
   observacao: "",
 };
@@ -99,6 +100,7 @@ function Investimentos({ view = "carteira" }) {
   const [movimentacaoData, setMovimentacaoData] = useState(movimentacaoInicial);
   const [ativoEditando, setAtivoEditando] = useState(null);
   const [ativoSelecionado, setAtivoSelecionado] = useState(null);
+  const [movimentacaoEditando, setMovimentacaoEditando] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingMovimentacoes, setLoadingMovimentacoes] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -191,6 +193,8 @@ function Investimentos({ view = "carteira" }) {
     [movimentacoes]
   );
 
+  const movimentacaoEhSplit = movimentacaoData.tipo === "split";
+
   async function carregarCarteira() {
     try {
       setLoading(true);
@@ -244,6 +248,7 @@ function Investimentos({ view = "carteira" }) {
   async function selecionarAtivo(ativo) {
     try {
       setAtivoSelecionado(ativo);
+      limparFormularioMovimentacao();
       setLoadingMovimentacoes(true);
       setErro("");
       setMensagem("");
@@ -263,8 +268,6 @@ function Investimentos({ view = "carteira" }) {
       ticker: ativo.ticker,
       nome: ativo.nome || "",
       tipo: ativo.tipo || "",
-      quantidade: String(ativo.quantidade || ""),
-      preco_medio: String(ativo.preco_medio || ""),
       data_inicial: ativo.data_inicial || formularioInicial.data_inicial,
     });
     setErro("");
@@ -276,8 +279,6 @@ function Investimentos({ view = "carteira" }) {
       ticker: formData.ticker.trim().toUpperCase(),
       nome: formData.nome.trim() || null,
       tipo: formData.tipo.trim() || null,
-      quantidade: Number(formData.quantidade),
-      preco_medio: Number(formData.preco_medio),
       data_inicial: formData.data_inicial,
     };
   }
@@ -285,14 +286,6 @@ function Investimentos({ view = "carteira" }) {
   function validarFormulario() {
     if (!formData.ticker.trim()) {
       return "Informe o ticker do ativo.";
-    }
-
-    if (!formData.quantidade || Number(formData.quantidade) <= 0) {
-      return "Informe uma quantidade maior que zero.";
-    }
-
-    if (!formData.preco_medio || Number(formData.preco_medio) <= 0) {
-      return "Informe um preco medio maior que zero.";
     }
 
     if (!formData.data_inicial) {
@@ -349,16 +342,17 @@ function Investimentos({ view = "carteira" }) {
       await carregarCarteira();
 
       const resumoProventos = `${resultado.proventos_criados || 0} provento(s) salvo(s)`;
+      const resumoSplits = `${resultado.splits_criados || 0} split(s) salvo(s)`;
       if (resultado.falhas) {
         setMensagem(
-          `${resultado.atualizados} ativo(s) atualizado(s). ${resultado.falhas} ativo(s) ficaram pendentes. ${resumoProventos}.`
+          `${resultado.atualizados} ativo(s) atualizado(s). ${resultado.falhas} ativo(s) ficaram pendentes. ${resumoSplits}. ${resumoProventos}.`
         );
-      } else if (resultado.proventos_falhas) {
+      } else if (resultado.splits_falhas || resultado.proventos_falhas) {
         setMensagem(
-          `${resultado.atualizados} ativo(s) atualizado(s) com sucesso. ${resumoProventos}. ${resultado.proventos_falhas} ativo(s) ficaram pendentes nos proventos.`
+          `${resultado.atualizados} ativo(s) atualizado(s) com sucesso. ${resumoSplits}. ${resumoProventos}. ${resultado.splits_falhas || 0} ativo(s) ficaram pendentes nos splits e ${resultado.proventos_falhas || 0} nos proventos.`
         );
       } else {
-        setMensagem(`${resultado.atualizados} ativo(s) atualizado(s) com sucesso. ${resumoProventos}.`);
+        setMensagem(`${resultado.atualizados} ativo(s) atualizado(s) com sucesso. ${resumoSplits}. ${resumoProventos}.`);
       }
     } catch (error) {
       setErro(extrairMensagemErro(error, "Nao foi possivel atualizar a carteira."));
@@ -387,12 +381,22 @@ function Investimentos({ view = "carteira" }) {
       return "Selecione um ativo.";
     }
 
-    if (!movimentacaoData.quantidade || Number(movimentacaoData.quantidade) <= 0) {
-      return "Informe uma quantidade maior que zero.";
-    }
+    if (movimentacaoData.tipo === "split") {
+      if (!movimentacaoData.fator_numerador || Number(movimentacaoData.fator_numerador) <= 0) {
+        return "Informe um fator numerador maior que zero.";
+      }
 
-    if (!movimentacaoData.preco_unitario || Number(movimentacaoData.preco_unitario) <= 0) {
-      return "Informe um preco unitario maior que zero.";
+      if (!movimentacaoData.fator_denominador || Number(movimentacaoData.fator_denominador) <= 0) {
+        return "Informe um fator denominador maior que zero.";
+      }
+    } else {
+      if (!movimentacaoData.quantidade || Number(movimentacaoData.quantidade) <= 0) {
+        return "Informe uma quantidade maior que zero.";
+      }
+
+      if (!movimentacaoData.preco_unitario || Number(movimentacaoData.preco_unitario) <= 0) {
+        return "Informe um preco unitario maior que zero.";
+      }
     }
 
     if (!movimentacaoData.data) {
@@ -400,6 +404,26 @@ function Investimentos({ view = "carteira" }) {
     }
 
     return "";
+  }
+
+  function iniciarEdicaoMovimentacao(movimentacao) {
+    setMovimentacaoEditando(movimentacao);
+    setMovimentacaoData({
+      tipo: movimentacao.tipo,
+      quantidade: movimentacao.tipo === "split" ? "" : String(movimentacao.quantidade),
+      preco_unitario: movimentacao.tipo === "split" ? "" : String(movimentacao.preco_unitario),
+      fator_numerador: movimentacao.fator_numerador ? String(movimentacao.fator_numerador) : "",
+      fator_denominador: movimentacao.fator_denominador ? String(movimentacao.fator_denominador) : "",
+      data: movimentacao.data,
+      observacao: movimentacao.observacao || "",
+    });
+    setErro("");
+    setMensagem("");
+  }
+
+  function limparFormularioMovimentacao() {
+    setMovimentacaoEditando(null);
+    setMovimentacaoData(movimentacaoInicial);
   }
 
   async function handleCriarMovimentacao(event) {
@@ -415,20 +439,37 @@ function Investimentos({ view = "carteira" }) {
       setSalvandoMovimentacao(true);
       setErro("");
       setMensagem("");
-      await criarMovimentacaoAtivo(ativoSelecionado.id, {
+      const payload = {
         tipo: movimentacaoData.tipo,
-        quantidade: Number(movimentacaoData.quantidade),
-        preco_unitario: Number(movimentacaoData.preco_unitario),
+        quantidade: movimentacaoData.tipo === "split" ? null : Number(movimentacaoData.quantidade),
+        preco_unitario: movimentacaoData.tipo === "split" ? null : Number(movimentacaoData.preco_unitario),
+        fator_numerador: movimentacaoData.tipo === "split" ? Number(movimentacaoData.fator_numerador) : null,
+        fator_denominador: movimentacaoData.tipo === "split" ? Number(movimentacaoData.fator_denominador) : null,
         data: movimentacaoData.data,
         observacao: movimentacaoData.observacao.trim() || null,
-      });
-      setMovimentacaoData(movimentacaoInicial);
-      setMensagem("Movimentacao registrada com sucesso.");
+      };
+
+      if (movimentacaoEditando) {
+        await atualizarMovimentacaoAtivo(movimentacaoEditando.id, payload);
+        setMensagem("Movimentacao atualizada com sucesso.");
+      } else {
+        await criarMovimentacaoAtivo(ativoSelecionado.id, payload);
+        setMensagem("Movimentacao registrada com sucesso.");
+      }
+
+      limparFormularioMovimentacao();
       await carregarCarteira();
       const movimentacoesAtualizadas = await listarMovimentacoesAtivo(ativoSelecionado.id);
       setMovimentacoes(movimentacoesAtualizadas);
     } catch (error) {
-      setErro(extrairMensagemErro(error, "Nao foi possivel registrar a movimentacao."));
+      setErro(
+        extrairMensagemErro(
+          error,
+          movimentacaoEditando
+            ? "Nao foi possivel atualizar a movimentacao."
+            : "Nao foi possivel registrar a movimentacao."
+        )
+      );
     } finally {
       setSalvandoMovimentacao(false);
     }
@@ -447,6 +488,9 @@ function Investimentos({ view = "carteira" }) {
       setMensagem("");
       await excluirMovimentacaoAtivo(movimentacao.id);
       setMensagem("Movimentacao excluida com sucesso.");
+      if (movimentacaoEditando?.id === movimentacao.id) {
+        limparFormularioMovimentacao();
+      }
       await carregarCarteira();
       const movimentacoesAtualizadas = await listarMovimentacoesAtivo(ativoSelecionado.id);
       setMovimentacoes(movimentacoesAtualizadas);
@@ -528,6 +572,7 @@ function Investimentos({ view = "carteira" }) {
       if (ativoSelecionado?.id === ativo.id) {
         setAtivoSelecionado(null);
         setMovimentacoes([]);
+        limparFormularioMovimentacao();
       }
 
       await carregarCarteira();
@@ -597,8 +642,8 @@ function Investimentos({ view = "carteira" }) {
 
           <section className="investment-overview-grid">
             <article className="panel investment-overview-card">
-              <span className="insight-kicker">Ativos</span>
-              <strong>{resumoNormalizado.quantidade_ativos} posicao(oes)</strong>
+            <span className="insight-kicker">Ativos</span>
+            <strong>{resumoNormalizado.quantidade_ativos} posicao(oes)</strong>
               <p>Cadastre ativos e registre compras ou vendas no historico de movimentacoes.</p>
               <Link className="button small" to="/investimentos/ativos">
                 Gerenciar ativos
@@ -629,9 +674,9 @@ function Investimentos({ view = "carteira" }) {
       {mostrarFormularioAtivos ? (
         <form className="panel investment-form" onSubmit={handleSubmit}>
         <div className="panel-header">
-          <div>
+            <div>
             <h2>{ativoEditando ? "Editar ativo" : "Novo ativo"}</h2>
-            <span>Cadastre o ticker, sua posicao e o preco medio de compra.</span>
+            <span>Cadastre o ativo e registre a posicao apenas pelas movimentacoes.</span>
           </div>
         </div>
 
@@ -663,30 +708,6 @@ function Investimentos({ view = "carteira" }) {
               value={formData.tipo}
               placeholder="Ex.: acao, fii, etf"
               onChange={(event) => atualizarCampo("tipo", event.target.value)}
-            />
-          </label>
-
-          <label>
-            Quantidade
-            <input
-              type="number"
-              min="0.000001"
-              step="0.000001"
-              value={formData.quantidade}
-              placeholder="0"
-              onChange={(event) => atualizarCampo("quantidade", event.target.value)}
-            />
-          </label>
-
-          <label>
-            Preco medio
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={formData.preco_medio}
-              placeholder="0.00"
-              onChange={(event) => atualizarCampo("preco_medio", event.target.value)}
             />
           </label>
 
@@ -842,32 +863,63 @@ function Investimentos({ view = "carteira" }) {
               >
                 <option value="compra">Compra</option>
                 <option value="venda">Venda</option>
+                <option value="split">Split</option>
               </select>
             </label>
 
-            <label>
-              Quantidade
-              <input
-                type="number"
-                min="0.000001"
-                step="0.000001"
-                value={movimentacaoData.quantidade}
-                placeholder="0"
-                onChange={(event) => atualizarCampoMovimentacao("quantidade", event.target.value)}
-              />
-            </label>
+            {!movimentacaoEhSplit ? (
+              <>
+                <label>
+                  Quantidade
+                  <input
+                    type="number"
+                    min="0.000001"
+                    step="0.000001"
+                    value={movimentacaoData.quantidade}
+                    placeholder="0"
+                    onChange={(event) => atualizarCampoMovimentacao("quantidade", event.target.value)}
+                  />
+                </label>
 
-            <label>
-              Preco unitario
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={movimentacaoData.preco_unitario}
-                placeholder="0.00"
-                onChange={(event) => atualizarCampoMovimentacao("preco_unitario", event.target.value)}
-              />
-            </label>
+                <label>
+                  Preco unitario
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={movimentacaoData.preco_unitario}
+                    placeholder="0.00"
+                    onChange={(event) => atualizarCampoMovimentacao("preco_unitario", event.target.value)}
+                  />
+                </label>
+              </>
+            ) : (
+              <>
+                <label>
+                  Fator numerador
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={movimentacaoData.fator_numerador}
+                    placeholder="10"
+                    onChange={(event) => atualizarCampoMovimentacao("fator_numerador", event.target.value)}
+                  />
+                </label>
+
+                <label>
+                  Fator denominador
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={movimentacaoData.fator_denominador}
+                    placeholder="1"
+                    onChange={(event) => atualizarCampoMovimentacao("fator_denominador", event.target.value)}
+                  />
+                </label>
+              </>
+            )}
 
             <label>
               Data
@@ -889,8 +941,13 @@ function Investimentos({ view = "carteira" }) {
             </label>
 
             <button className="button primary" type="submit" disabled={salvandoMovimentacao}>
-              {salvandoMovimentacao ? "Salvando..." : "Adicionar"}
+              {salvandoMovimentacao ? "Salvando..." : movimentacaoEditando ? "Salvar movimentacao" : "Adicionar"}
             </button>
+            {movimentacaoEditando ? (
+              <button className="button" type="button" onClick={limparFormularioMovimentacao}>
+                Cancelar
+              </button>
+            ) : null}
           </form>
 
           {loadingMovimentacoes ? <LoadingState message="Carregando movimentacoes..." /> : null}
@@ -914,21 +971,28 @@ function Investimentos({ view = "carteira" }) {
                   <tbody>
                     {movimentacoes.map((movimentacao) => {
                       const ehVenda = movimentacao.tipo === "venda";
+                      const ehSplit = movimentacao.tipo === "split";
                       const resultado = Number(movimentacao.lucro_prejuizo || 0);
+                      const fatorSplit =
+                        movimentacao.fator_numerador && movimentacao.fator_denominador
+                          ? `${movimentacao.fator_numerador}:${movimentacao.fator_denominador}`
+                          : "-";
 
                       return (
                         <tr key={movimentacao.id}>
                           <td data-label="Data">{formatarData(movimentacao.data)}</td>
                           <td data-label="Tipo">
-                            <span className={`type-pill ${ehVenda ? "expense" : "income"}`}>
-                              {ehVenda ? "Venda" : "Compra"}
+                            <span className={`type-pill ${ehSplit ? "neutral" : ehVenda ? "expense" : "income"}`}>
+                              {ehSplit ? `Split ${fatorSplit}` : ehVenda ? "Venda" : "Compra"}
                             </span>
                           </td>
                           <td data-label="Quantidade">
-                            {Number(movimentacao.quantidade).toLocaleString("pt-BR")}
+                            {ehSplit ? "-" : Number(movimentacao.quantidade).toLocaleString("pt-BR")}
                           </td>
-                          <td data-label="Preco unitario">{formatarMoeda(movimentacao.preco_unitario)}</td>
-                          <td data-label="Total">{formatarMoeda(movimentacao.valor_total)}</td>
+                          <td data-label="Preco unitario">
+                            {ehSplit ? fatorSplit : formatarMoeda(movimentacao.preco_unitario)}
+                          </td>
+                          <td data-label="Total">{ehSplit ? "-" : formatarMoeda(movimentacao.valor_total)}</td>
                           <td data-label="Preco medio">
                             {formatarMoeda(movimentacao.preco_medio_antes)} {"->"}{" "}
                             {formatarMoeda(movimentacao.preco_medio_depois)}
@@ -940,14 +1004,23 @@ function Investimentos({ view = "carteira" }) {
                             {ehVenda ? formatarMoeda(movimentacao.lucro_prejuizo) : "-"}
                           </td>
                           <td data-label="Acoes">
-                            <button
-                              className="button small danger"
-                              type="button"
-                              disabled={excluindoMovimentacaoId === movimentacao.id}
-                              onClick={() => handleExcluirMovimentacao(movimentacao)}
-                            >
-                              {excluindoMovimentacaoId === movimentacao.id ? "Excluindo..." : "Excluir"}
-                            </button>
+                            <div className="table-actions">
+                              <button
+                                className="button small"
+                                type="button"
+                                onClick={() => iniciarEdicaoMovimentacao(movimentacao)}
+                              >
+                                Editar
+                              </button>
+                              <button
+                                className="button small danger"
+                                type="button"
+                                disabled={excluindoMovimentacaoId === movimentacao.id}
+                                onClick={() => handleExcluirMovimentacao(movimentacao)}
+                              >
+                                {excluindoMovimentacaoId === movimentacao.id ? "Excluindo..." : "Excluir"}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
