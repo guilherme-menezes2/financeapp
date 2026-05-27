@@ -661,6 +661,39 @@ p {
   outline: 3px solid rgb(15 118 110 / 14%);
 }
 
+.proventos-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 0 22px 18px;
+}
+
+.proventos-filters label {
+  display: grid;
+  gap: 8px;
+  color: #334155;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.proventos-filters input,
+.proventos-filters select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  color: var(--text);
+  background: #ffffff;
+}
+
+.proventos-filters input:focus,
+.proventos-filters select:focus {
+  border-color: var(--primary);
+  outline: 3px solid rgb(15 118 110 / 14%);
+}
+
 .chart-tooltip {
   display: grid;
   gap: 6px;
@@ -1129,6 +1162,10 @@ p {
   .flow-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .proventos-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 900px) {
@@ -1181,6 +1218,7 @@ p {
     .dashboard-insights,
     .flow-filters,
     .filters-panel,
+    .proventos-filters,
   .investment-form-grid,
   .movement-form-grid,
   .investment-overview-grid,

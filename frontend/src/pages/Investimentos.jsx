@@ -57,6 +57,13 @@ const movimentacaoInicial = {
   observacao: "",
 };
 
+const filtroProventosInicial = {
+  dataInicio: "",
+  dataFim: "",
+  ativoId: "",
+  buscaAtivo: "",
+};
+
 function extrairMensagemErro(error, fallback) {
   const detail = error?.response?.data?.detail;
 
@@ -113,6 +120,7 @@ function Investimentos({ view = "carteira" }) {
   const [excluindoMovimentacaoId, setExcluindoMovimentacaoId] = useState(null);
   const [erro, setErro] = useState("");
   const [mensagem, setMensagem] = useState("");
+  const [filtrosProventos, setFiltrosProventos] = useState(filtroProventosInicial);
 
   const temAtivos = ativos.length > 0;
   const configPagina = pageConfig[view] || pageConfig.carteira;
@@ -132,11 +140,6 @@ function Investimentos({ view = "carteira" }) {
       ultima_atualizacao: resumo?.ultima_atualizacao ?? null,
     }),
     [resumo]
-  );
-
-  const totalProventos = useMemo(
-    () => proventos.reduce((total, provento) => total + Number(provento.valor_estimado || 0), 0),
-    [proventos]
   );
 
   const ultimoSnapshot = snapshots.length ? snapshots[snapshots.length - 1] : null;
@@ -195,6 +198,44 @@ function Investimentos({ view = "carteira" }) {
 
   const movimentacaoEhSplit = movimentacaoData.tipo === "split";
 
+  const ativosFiltradosBusca = useMemo(() => {
+    const termo = filtrosProventos.buscaAtivo.trim().toLowerCase();
+
+    if (!termo) {
+      return ativos;
+    }
+
+    return ativos.filter((ativo) => {
+      const ticker = ativo.ticker?.toLowerCase() || "";
+      const nome = ativo.nome?.toLowerCase() || "";
+      return ticker.includes(termo) || nome.includes(termo);
+    });
+  }, [ativos, filtrosProventos.buscaAtivo]);
+
+  const proventosFiltrados = useMemo(() => {
+    return proventos.filter((provento) => {
+      const ativoMatch = filtrosProventos.ativoId
+        ? String(provento.ativo_id) === filtrosProventos.ativoId
+        : true;
+      const dataCom = provento.data_com || provento.data_pagamento || "";
+      const dataInicioMatch = filtrosProventos.dataInicio
+        ? dataCom >= filtrosProventos.dataInicio
+        : true;
+      const dataFimMatch = filtrosProventos.dataFim ? dataCom <= filtrosProventos.dataFim : true;
+
+      return ativoMatch && dataInicioMatch && dataFimMatch;
+    });
+  }, [filtrosProventos.ativoId, filtrosProventos.dataFim, filtrosProventos.dataInicio, proventos]);
+
+  const totalProventos = useMemo(
+    () =>
+      proventosFiltrados.reduce(
+        (total, provento) => total + Number(provento.valor_estimado || 0),
+        0
+      ),
+    [proventosFiltrados]
+  );
+
   async function carregarCarteira() {
     try {
       setLoading(true);
@@ -209,6 +250,15 @@ function Investimentos({ view = "carteira" }) {
       setResumo(resumoData);
       setProventos(proventosData);
       setSnapshots(snapshotsData);
+      setFiltrosProventos((dadosAtuais) => {
+        if (!dadosAtuais.ativoId) {
+          return dadosAtuais;
+        }
+
+        const ativoExiste = ativosData.some((ativo) => String(ativo.id) === dadosAtuais.ativoId);
+        return ativoExiste ? dadosAtuais : { ...dadosAtuais, ativoId: "" };
+      });
+
       if (ativoSelecionado) {
         const ativoAtualizado = ativosData.find((ativo) => ativo.id === ativoSelecionado.id);
         setAtivoSelecionado(ativoAtualizado || null);
@@ -236,6 +286,17 @@ function Investimentos({ view = "carteira" }) {
       ...dadosAtuais,
       [campo]: valor,
     }));
+  }
+
+  function atualizarFiltroProventos(campo, valor) {
+    setFiltrosProventos((dadosAtuais) => ({
+      ...dadosAtuais,
+      [campo]: valor,
+    }));
+  }
+
+  function limparFiltrosProventos() {
+    setFiltrosProventos(filtroProventosInicial);
   }
 
   function limparFormulario() {
@@ -1048,41 +1109,104 @@ function Investimentos({ view = "carteira" }) {
             <strong className="panel-total income">{formatarMoeda(totalProventos)}</strong>
           </div>
           {proventos.length ? (
-            <div className="table-scroll">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Ativo</th>
-                    <th>Tipo</th>
-                    <th>Data com</th>
-                    <th>Valor por cota</th>
-                    <th>Quantidade</th>
-                    <th>Total estimado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {proventos.map((provento) => (
-                    <tr key={provento.id}>
-                      <td data-label="Ativo">
-                        <strong>{provento.ticker}</strong>
-                        <span>{provento.fonte}</span>
-                      </td>
-                      <td data-label="Tipo">{provento.tipo || "Provento"}</td>
-                      <td data-label="Data com">
-                        {provento.data_com ? formatarData(provento.data_com) : "-"}
-                      </td>
-                      <td data-label="Valor por cota">{formatarMoedaPrecisa(provento.valor_por_cota)}</td>
-                      <td data-label="Quantidade">
-                        {provento.quantidade_base ? Number(provento.quantidade_base).toLocaleString("pt-BR") : "-"}
-                      </td>
-                      <td data-label="Total estimado">
-                        <strong className="value-income">{formatarMoeda(provento.valor_estimado)}</strong>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="proventos-filters">
+                <label>
+                  Data inicial
+                  <input
+                    type="date"
+                    value={filtrosProventos.dataInicio}
+                    max={filtrosProventos.dataFim || undefined}
+                    onChange={(event) => atualizarFiltroProventos("dataInicio", event.target.value)}
+                  />
+                </label>
+
+                <label>
+                  Data final
+                  <input
+                    type="date"
+                    value={filtrosProventos.dataFim}
+                    min={filtrosProventos.dataInicio || undefined}
+                    onChange={(event) => atualizarFiltroProventos("dataFim", event.target.value)}
+                  />
+                </label>
+
+                <label>
+                  Buscar ativo
+                  <input
+                    type="text"
+                    value={filtrosProventos.buscaAtivo}
+                    placeholder="Ticker ou nome"
+                    onChange={(event) => atualizarFiltroProventos("buscaAtivo", event.target.value)}
+                  />
+                </label>
+
+                <label>
+                  Ativo
+                  <select
+                    value={filtrosProventos.ativoId}
+                    onChange={(event) => atualizarFiltroProventos("ativoId", event.target.value)}
+                  >
+                    <option value="">Todos os ativos</option>
+                    {ativosFiltradosBusca.map((ativo) => (
+                      <option key={ativo.id} value={String(ativo.id)}>
+                        {ativo.ticker}
+                        {ativo.nome && ativo.nome !== ativo.ticker ? ` - ${ativo.nome}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <button className="button" type="button" onClick={limparFiltrosProventos}>
+                  Limpar filtros
+                </button>
+              </div>
+
+              {proventosFiltrados.length ? (
+                <div className="table-scroll">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Ativo</th>
+                        <th>Tipo</th>
+                        <th>Data com</th>
+                        <th>Valor por cota</th>
+                        <th>Quantidade</th>
+                        <th>Total estimado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {proventosFiltrados.map((provento) => (
+                        <tr key={provento.id}>
+                          <td data-label="Ativo">
+                            <strong>{provento.ticker}</strong>
+                            <span>{provento.fonte}</span>
+                          </td>
+                          <td data-label="Tipo">{provento.tipo || "Provento"}</td>
+                          <td data-label="Data com">
+                            {provento.data_com ? formatarData(provento.data_com) : "-"}
+                          </td>
+                          <td data-label="Valor por cota">{formatarMoedaPrecisa(provento.valor_por_cota)}</td>
+                          <td data-label="Quantidade">
+                            {provento.quantidade_base
+                              ? Number(provento.quantidade_base).toLocaleString("pt-BR")
+                              : "-"}
+                          </td>
+                          <td data-label="Total estimado">
+                            <strong className="value-income">{formatarMoeda(provento.valor_estimado)}</strong>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="empty-dashboard">
+                  <h2>Nenhum provento encontrado nos filtros</h2>
+                  <p>Ajuste o periodo ou selecione outro ativo para visualizar os dividendos.</p>
+                </div>
+              )}
+            </>
           ) : (
             <div className="empty-dashboard">
               <h2>Nenhum provento encontrado</h2>
