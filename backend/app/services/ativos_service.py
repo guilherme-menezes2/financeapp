@@ -304,6 +304,71 @@ def ajustar_valor_por_cota_com_splits(
     return valor_por_cota
 
 
+def normalizar_valor_por_cota_por_contexto(
+    valor_por_cota: Decimal,
+    referencias: list[Decimal],
+) -> Decimal:
+    mediana_referencia = calcular_mediana_decimal([valor for valor in referencias if valor > 0])
+    if mediana_referencia is None or mediana_referencia <= 0:
+        return valor_por_cota
+
+    margem_tolerancia = Decimal("0.35")
+    fator_decimal = Decimal("10")
+
+    if valor_por_cota <= mediana_referencia / Decimal("5"):
+        candidato = valor_por_cota * fator_decimal
+        diferenca_relativa = abs(candidato - mediana_referencia) / mediana_referencia
+        if diferenca_relativa <= margem_tolerancia:
+            return candidato
+
+    if valor_por_cota >= mediana_referencia * Decimal("5"):
+        candidato = valor_por_cota / fator_decimal
+        diferenca_relativa = abs(candidato - mediana_referencia) / mediana_referencia
+        if diferenca_relativa <= margem_tolerancia:
+            return candidato
+
+    return valor_por_cota
+
+
+def ajustar_valor_por_cota_por_contexto(
+    db: Session,
+    ativo_id: int,
+    proventos_yahoo,
+    indice_atual: int,
+    data_com_atual: date,
+    valor_por_cota: Decimal,
+) -> Decimal:
+    fator_split_atual = obter_fator_splits_posteriores(db, ativo_id, data_com_atual)
+    indices_contexto = []
+    if indice_atual - 1 >= 0:
+        indices_contexto.append(indice_atual - 1)
+    if indice_atual - 2 >= 0:
+        indices_contexto.append(indice_atual - 2)
+    if indice_atual + 1 < len(proventos_yahoo):
+        indices_contexto.append(indice_atual + 1)
+    if indice_atual + 2 < len(proventos_yahoo):
+        indices_contexto.append(indice_atual + 2)
+
+    referencias = []
+    for indice in indices_contexto:
+        provento_contexto = proventos_yahoo[indice]
+        data_com_contexto = provento_contexto.data_pagamento.date() - timedelta(days=1)
+        fator_split_contexto = obter_fator_splits_posteriores(db, ativo_id, data_com_contexto)
+        if fator_split_contexto != fator_split_atual:
+            continue
+        referencias.append(
+            ajustar_valor_por_cota_com_splits(
+                db,
+                ativo_id,
+                data_com_contexto,
+                Decimal(provento_contexto.valor_por_cota),
+                proventos_yahoo,
+            )
+        )
+
+    return normalizar_valor_por_cota_por_contexto(valor_por_cota, referencias)
+
+
 def existe_split_mesmo_evento(
     db: Session,
     ativo_id: int,
@@ -758,7 +823,7 @@ def atualizar_proventos_ativo(db: Session, ativo: models.Ativo) -> dict:
     criados = 0
     ignorados_por_quantidade = 0
 
-    for provento_yahoo in proventos_validos:
+    for indice, provento_yahoo in enumerate(proventos_validos):
         data_com = provento_yahoo.data_pagamento.date() - timedelta(days=1)
         valor_por_cota = provento_yahoo.valor_por_cota
         quantidade_base = obter_quantidade_ativo_na_data(db, ativo.id, data_com)
@@ -772,7 +837,15 @@ def atualizar_proventos_ativo(db: Session, ativo: models.Ativo) -> dict:
             ativo.id,
             data_com,
             valor_por_cota,
-            proventos_yahoo,
+            proventos_validos,
+        )
+        valor_por_cota_ajustado = ajustar_valor_por_cota_por_contexto(
+            db,
+            ativo.id,
+            proventos_validos,
+            indice,
+            data_com,
+            valor_por_cota_ajustado,
         )
 
         provento = models.ProventoAtivo(
