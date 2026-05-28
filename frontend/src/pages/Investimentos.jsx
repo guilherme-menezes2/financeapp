@@ -715,19 +715,13 @@ function Investimentos({ view = "carteira" }) {
         (total, item) => total + Number(item.proventos_removidos || 0),
         0
       );
-      const ajustados = (resultado.resultados || []).reduce(
-        (total, item) => total + Number(item.proventos_ajustados || 0),
-        0
-      );
 
       if (resultado.falhas) {
         setMensagem(
-          `${resultado.total_proventos_criados} novo(s) provento(s) salvo(s). ${ajustados} data(s) ajustada(s). ${removidos} antigo(s) removido(s). ${resultado.falhas} ativo(s) ficaram pendentes.`
+          `${resultado.total_proventos_criados} novo(s) provento(s) salvo(s). ${removidos} antigo(s) removido(s). ${resultado.falhas} ativo(s) ficaram pendentes.`
         );
       } else if (resultado.total_proventos_criados) {
-        setMensagem(`${resultado.total_proventos_criados} novo(s) provento(s) salvo(s). ${ajustados} data(s) ajustada(s). ${removidos} antigo(s) removido(s).`);
-      } else if (ajustados) {
-        setMensagem(`${ajustados} data(s) com foram ajustada(s) a partir do Yahoo Finance.`);
+        setMensagem(`${resultado.total_proventos_criados} novo(s) provento(s) salvo(s). ${removidos} antigo(s) removido(s).`);
       } else if (removidos) {
         setMensagem(`${removidos} provento(s) anterior(es) a data inicial foram removidos.`);
       } else {

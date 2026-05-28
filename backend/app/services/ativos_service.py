@@ -579,7 +579,7 @@ def ajustar_valor_por_cota_com_splits(
     referencias = [
         Decimal(provento.valor_por_cota)
         for provento in proventos_yahoo
-        if (provento.data_pagamento.date() - timedelta(days=1)) >= ultima_data_split
+        if obter_data_com_yahoo(provento) >= ultima_data_split
     ]
     mediana_referencia = calcular_mediana_decimal(referencias)
     if mediana_referencia is None:
@@ -640,7 +640,7 @@ def ajustar_valor_por_cota_por_contexto(
     referencias = []
     for indice in indices_contexto:
         provento_contexto = proventos_yahoo[indice]
-        data_com_contexto = provento_contexto.data_pagamento.date() - timedelta(days=1)
+        data_com_contexto = obter_data_com_yahoo(provento_contexto)
         fator_split_contexto = obter_fator_splits_posteriores(db, ativo_id, data_com_contexto)
         if fator_split_contexto != fator_split_atual:
             continue
@@ -655,6 +655,39 @@ def ajustar_valor_por_cota_por_contexto(
         )
 
     return normalizar_valor_por_cota_por_contexto(valor_por_cota, referencias)
+
+
+def obter_data_com_yahoo(provento) -> date:
+    return provento.data_pagamento.date()
+
+
+def ativo_eh_fii(ativo: models.Ativo) -> bool:
+    tipo = (ativo.tipo or "").strip().lower()
+    ticker = (ativo.ticker or "").strip().upper()
+    return tipo == "fii" or ticker.endswith("11")
+
+
+def consolidar_proventos_mensais_fii(proventos_yahoo: list) -> list:
+    proventos_por_mes = {}
+
+    for provento in proventos_yahoo:
+        data_com = obter_data_com_yahoo(provento)
+        chave = data_com.strftime("%Y-%m")
+        provento_atual = proventos_por_mes.get(chave)
+
+        if provento_atual is None:
+            proventos_por_mes[chave] = provento
+            continue
+
+        data_atual = obter_data_com_yahoo(provento_atual)
+        if data_com > data_atual:
+            proventos_por_mes[chave] = provento
+
+    return sorted(
+        proventos_por_mes.values(),
+        key=lambda provento: provento.data_pagamento,
+        reverse=True,
+    )
 
 
 def existe_split_mesmo_evento(
@@ -1106,13 +1139,17 @@ def atualizar_proventos_ativo(db: Session, ativo: models.Ativo) -> dict:
     proventos_validos = [
         provento
         for provento in proventos_yahoo
-        if (provento.data_pagamento.date() - timedelta(days=1)) >= ativo.data_inicial
+        if obter_data_com_yahoo(provento) >= ativo.data_inicial
     ]
+    proventos_antes_consolidacao = len(proventos_validos)
+    if ativo_eh_fii(ativo):
+        proventos_validos = consolidar_proventos_mensais_fii(proventos_validos)
+
     criados = 0
     ignorados_por_quantidade = 0
 
     for indice, provento_yahoo in enumerate(proventos_validos):
-        data_com = provento_yahoo.data_pagamento.date() - timedelta(days=1)
+        data_com = obter_data_com_yahoo(provento_yahoo)
         valor_por_cota = provento_yahoo.valor_por_cota
         quantidade_base = obter_quantidade_ativo_na_data(db, ativo.id, data_com)
 
@@ -1154,7 +1191,9 @@ def atualizar_proventos_ativo(db: Session, ativo: models.Ativo) -> dict:
         "ticker": ativo.ticker,
         "proventos_encontrados": len(proventos_yahoo),
         "proventos_validos": len(proventos_validos),
-        "proventos_ignorados": (len(proventos_yahoo) - len(proventos_validos)) + ignorados_por_quantidade,
+        "proventos_ignorados": (len(proventos_yahoo) - proventos_antes_consolidacao)
+        + (proventos_antes_consolidacao - len(proventos_validos))
+        + ignorados_por_quantidade,
         "proventos_criados": criados,
         "proventos_removidos": removidos,
         "proventos_ajustados": 0,
