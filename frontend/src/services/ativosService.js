@@ -56,6 +56,13 @@ export async function listarSnapshotsCarteira() {
   return data;
 }
 
+export async function obterEvolucaoCarteira(atualizarCache = false) {
+  const { data } = await api.get("/ativos/evolucao", {
+    params: { atualizar_cache: atualizarCache },
+  });
+  return data;
+}
+
 export async function registrarSnapshotCarteira() {
   const { data } = await api.post("/ativos/snapshots");
   return data;

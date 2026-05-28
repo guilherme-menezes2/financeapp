@@ -1114,6 +1114,19 @@ p {
   background: var(--success-bg);
 }
 
+.state-box.warning {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 6px;
+  color: #92400e;
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.state-box.warning p {
+  margin: 0;
+}
+
 .loading-state {
   color: #475569;
 }

@@ -292,6 +292,22 @@ class SnapshotCarteiraResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class EvolucaoCarteiraItemResponse(BaseModel):
+    mes: str
+    data_referencia: date | None
+    patrimonio_total: Decimal
+    valor_investido_total: Decimal
+    lucro_prejuizo_total: Decimal
+    rentabilidade_percentual: Decimal
+    quantidade_ativos: int
+
+
+class EvolucaoCarteiraResponse(BaseModel):
+    dados: list[EvolucaoCarteiraItemResponse]
+    avisos: list[str] = []
+    atualizado_em: datetime
+
+
 class MovimentacaoAtivoBase(BaseModel):
     tipo: Literal["compra", "venda", "split"]
     quantidade: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=6)

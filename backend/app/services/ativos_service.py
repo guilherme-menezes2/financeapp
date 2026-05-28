@@ -1,3 +1,4 @@
+import calendar
 import os
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -116,6 +117,293 @@ def listar_snapshots_carteira(
         .limit(limite)
         .all()
     )[::-1]
+
+
+def primeiro_dia_mes(data_referencia: date) -> date:
+    return date(data_referencia.year, data_referencia.month, 1)
+
+
+def ultimo_dia_mes(data_referencia: date) -> date:
+    ultimo_dia = calendar.monthrange(data_referencia.year, data_referencia.month)[1]
+    return date(data_referencia.year, data_referencia.month, ultimo_dia)
+
+
+def listar_meses(inicio: date, fim: date) -> list[date]:
+    meses = []
+    mes_atual = primeiro_dia_mes(inicio)
+    mes_fim = primeiro_dia_mes(fim)
+
+    while mes_atual <= mes_fim:
+        meses.append(mes_atual)
+        if mes_atual.month == 12:
+            mes_atual = date(mes_atual.year + 1, 1, 1)
+        else:
+            mes_atual = date(mes_atual.year, mes_atual.month + 1, 1)
+
+    return meses
+
+
+def obter_primeira_compra_carteira(db: Session) -> date | None:
+    return (
+        db.query(func.min(models.MovimentacaoAtivo.data))
+        .filter(models.MovimentacaoAtivo.tipo == "compra")
+        .scalar()
+    )
+
+
+def calcular_posicao_ativo_na_data(
+    db: Session,
+    ativo_id: int,
+    data_referencia: date,
+) -> dict:
+    quantidade_atual = Decimal("0")
+    preco_medio_atual = Decimal("0")
+
+    for movimentacao in listar_movimentacoes_ordenadas(db, ativo_id):
+        if movimentacao.data > data_referencia:
+            break
+
+        quantidade = Decimal(movimentacao.quantidade)
+        preco_unitario = Decimal(movimentacao.preco_unitario)
+
+        if movimentacao.tipo == "compra":
+            valor_total = quantidade * preco_unitario
+            nova_quantidade = quantidade_atual + quantidade
+            preco_medio_atual = (
+                ((quantidade_atual * preco_medio_atual) + valor_total) / nova_quantidade
+                if nova_quantidade
+                else Decimal("0")
+            )
+            quantidade_atual = nova_quantidade
+        elif movimentacao.tipo == "venda":
+            quantidade_atual = max(quantidade_atual - quantidade, Decimal("0"))
+            if quantidade_atual == 0:
+                preco_medio_atual = Decimal("0")
+        elif movimentacao.tipo == "split":
+            if not movimentacao.fator_numerador or not movimentacao.fator_denominador:
+                continue
+            fator = Decimal(movimentacao.fator_numerador) / Decimal(movimentacao.fator_denominador)
+            if fator:
+                quantidade_atual *= fator
+                preco_medio_atual = preco_medio_atual / fator
+
+    return {
+        "quantidade": quantidade_atual,
+        "preco_medio": preco_medio_atual,
+        "valor_investido": quantidade_atual * preco_medio_atual,
+    }
+
+
+def calcular_fator_splits_posteriores(
+    db: Session,
+    ativo_id: int,
+    data_referencia: date,
+) -> Decimal:
+    fator_acumulado = Decimal("1")
+    splits = (
+        db.query(models.MovimentacaoAtivo)
+        .filter(
+            models.MovimentacaoAtivo.ativo_id == ativo_id,
+            models.MovimentacaoAtivo.tipo == "split",
+            models.MovimentacaoAtivo.data > data_referencia,
+        )
+        .order_by(models.MovimentacaoAtivo.data.asc(), models.MovimentacaoAtivo.id.asc())
+        .all()
+    )
+
+    for split in splits:
+        if not split.fator_numerador or not split.fator_denominador:
+            continue
+        fator_acumulado *= Decimal(split.fator_numerador) / Decimal(split.fator_denominador)
+
+    return fator_acumulado
+
+
+def atualizar_cache_cotacoes_historicas_ativo(
+    db: Session,
+    ativo: models.Ativo,
+    data_inicio: date,
+    data_fim: date,
+) -> int:
+    precos = YahooFinanceClient().buscar_precos_historicos(
+        ativo.ticker,
+        data_inicio,
+        data_fim,
+    )
+    criados = 0
+
+    for preco in precos:
+        cotacao = (
+            db.query(models.CotacaoHistoricaAtivo)
+            .filter(
+                models.CotacaoHistoricaAtivo.ativo_id == ativo.id,
+                models.CotacaoHistoricaAtivo.data_referencia == preco.data_referencia,
+            )
+            .first()
+        )
+
+        if cotacao is None:
+            cotacao = models.CotacaoHistoricaAtivo(
+                ativo_id=ativo.id,
+                ticker=ativo.ticker,
+                data_referencia=preco.data_referencia,
+                fonte="yahoo_finance",
+            )
+            db.add(cotacao)
+            criados += 1
+
+        cotacao.ticker = ativo.ticker
+        cotacao.preco_fechamento = preco.fechamento
+
+    return criados
+
+
+def ativo_tem_cache_historico(
+    db: Session,
+    ativo_id: int,
+    data_inicio: date,
+    data_fim: date,
+) -> bool:
+    return (
+        db.query(models.CotacaoHistoricaAtivo.id)
+        .filter(
+            models.CotacaoHistoricaAtivo.ativo_id == ativo_id,
+            models.CotacaoHistoricaAtivo.data_referencia >= data_inicio,
+            models.CotacaoHistoricaAtivo.data_referencia <= data_fim,
+        )
+        .first()
+        is not None
+    )
+
+
+def obter_ultima_cotacao_historica_no_mes(
+    db: Session,
+    ativo_id: int,
+    data_mes: date,
+) -> models.CotacaoHistoricaAtivo | None:
+    inicio_mes = primeiro_dia_mes(data_mes)
+    fim_mes = min(ultimo_dia_mes(data_mes), date.today())
+
+    return (
+        db.query(models.CotacaoHistoricaAtivo)
+        .filter(
+            models.CotacaoHistoricaAtivo.ativo_id == ativo_id,
+            models.CotacaoHistoricaAtivo.data_referencia >= inicio_mes,
+            models.CotacaoHistoricaAtivo.data_referencia <= fim_mes,
+        )
+        .order_by(models.CotacaoHistoricaAtivo.data_referencia.desc())
+        .first()
+    )
+
+
+def calcular_evolucao_real_carteira(
+    db: Session,
+    atualizar_cache: bool = False,
+) -> dict:
+    data_primeira_compra = obter_primeira_compra_carteira(db)
+    agora = datetime.utcnow()
+    if data_primeira_compra is None:
+        return {
+            "dados": [],
+            "avisos": ["Cadastre movimentacoes de compra para calcular a evolucao da carteira."],
+            "atualizado_em": agora,
+        }
+
+    hoje = date.today()
+    ativos = db.query(models.Ativo).order_by(models.Ativo.ticker.asc()).all()
+    avisos = []
+    cotacoes_ausentes: dict[str, list[str]] = {}
+
+    for ativo in ativos:
+        tem_compra = (
+            db.query(models.MovimentacaoAtivo.id)
+            .filter(
+                models.MovimentacaoAtivo.ativo_id == ativo.id,
+                models.MovimentacaoAtivo.tipo == "compra",
+            )
+            .first()
+            is not None
+        )
+        if not tem_compra:
+            continue
+
+        if atualizar_cache or not ativo_tem_cache_historico(db, ativo.id, data_primeira_compra, hoje):
+            try:
+                atualizar_cache_cotacoes_historicas_ativo(db, ativo, data_primeira_compra, hoje)
+                db.flush()
+            except HTTPException as error:
+                avisos.append(f"{ativo.ticker}: {error.detail}")
+            except Exception:
+                avisos.append(f"{ativo.ticker}: nao foi possivel atualizar cotacoes historicas.")
+
+    dados = []
+    for mes in listar_meses(data_primeira_compra, hoje):
+        patrimonio_total = Decimal("0")
+        valor_investido_total = Decimal("0")
+        quantidade_ativos = 0
+        data_referencia_mes = None
+
+        for ativo in ativos:
+            cotacao = obter_ultima_cotacao_historica_no_mes(db, ativo.id, mes)
+            data_posicao = cotacao.data_referencia if cotacao else min(ultimo_dia_mes(mes), hoje)
+            posicao = calcular_posicao_ativo_na_data(db, ativo.id, data_posicao)
+            quantidade = posicao["quantidade"]
+
+            if quantidade <= 0:
+                continue
+            if cotacao is None:
+                cotacoes_ausentes.setdefault(ativo.ticker, []).append(mes.strftime("%Y-%m"))
+                continue
+
+            fator_splits_posteriores = calcular_fator_splits_posteriores(
+                db,
+                ativo.id,
+                cotacao.data_referencia,
+            )
+            preco_fechamento_ajustado = Decimal(cotacao.preco_fechamento) * fator_splits_posteriores
+
+            patrimonio_total += quantidade * preco_fechamento_ajustado
+            valor_investido_total += posicao["valor_investido"]
+            quantidade_ativos += 1
+            if data_referencia_mes is None or cotacao.data_referencia > data_referencia_mes:
+                data_referencia_mes = cotacao.data_referencia
+
+        lucro_prejuizo_total = patrimonio_total - valor_investido_total
+        rentabilidade_percentual = (
+            (lucro_prejuizo_total / valor_investido_total) * Decimal("100")
+            if valor_investido_total
+            else Decimal("0")
+        )
+
+        dados.append(
+            {
+                "mes": mes.strftime("%Y-%m"),
+                "data_referencia": data_referencia_mes,
+                "patrimonio_total": patrimonio_total,
+                "valor_investido_total": valor_investido_total,
+                "lucro_prejuizo_total": lucro_prejuizo_total,
+                "rentabilidade_percentual": rentabilidade_percentual,
+                "quantidade_ativos": quantidade_ativos,
+            }
+        )
+
+    for ticker, meses_ausentes in cotacoes_ausentes.items():
+        if not meses_ausentes:
+            continue
+
+        primeiro_mes = meses_ausentes[0]
+        ultimo_mes = meses_ausentes[-1]
+        periodo = primeiro_mes if primeiro_mes == ultimo_mes else f"{primeiro_mes} a {ultimo_mes}"
+        avisos.append(
+            f"{ticker}: Yahoo Finance nao retornou cotacoes historicas para {periodo}; "
+            "esses meses foram calculados sem esse ativo."
+        )
+
+    return {
+        "dados": dados,
+        "avisos": sorted(set(avisos)),
+        "atualizado_em": agora,
+    }
 
 
 def listar_movimentacoes_ativo(

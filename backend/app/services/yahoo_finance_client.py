@@ -1,7 +1,7 @@
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -36,6 +36,13 @@ class YahooSplit:
     data_evento: datetime
     numerador: int
     denominador: int
+
+
+@dataclass
+class YahooPrecoHistorico:
+    ticker: str
+    data_referencia: date
+    fechamento: Decimal
 
 
 def decimal_ou_none(valor) -> Decimal | None:
@@ -97,6 +104,35 @@ class YahooFinanceClient:
                     "range=10y&interval=1mo&events=split",
                 )
                 return self._converter_splits(resultado, ticker)
+            except ValueError as error:
+                ultimo_erro = str(error)
+                continue
+
+        mensagem = ultimo_erro or "Ticker nao encontrado no Yahoo Finance."
+        raise bad_request(mensagem)
+
+    def buscar_precos_historicos(
+        self,
+        ticker: str,
+        data_inicio: date,
+        data_fim: date,
+    ) -> list[YahooPrecoHistorico]:
+        simbolos = self._simbolos_para_tentar(ticker)
+        ultimo_erro = None
+        inicio_timestamp = int(
+            datetime.combine(data_inicio, time.min, tzinfo=timezone.utc).timestamp()
+        )
+        fim_timestamp = int(
+            datetime.combine(data_fim, time.max, tzinfo=timezone.utc).timestamp()
+        )
+
+        for simbolo in simbolos:
+            try:
+                resultado = self._buscar_resultado(
+                    simbolo,
+                    f"period1={inicio_timestamp}&period2={fim_timestamp}&interval=1d",
+                )
+                return self._converter_precos_historicos(resultado, ticker)
             except ValueError as error:
                 ultimo_erro = str(error)
                 continue
@@ -248,3 +284,31 @@ class YahooFinanceClient:
             )
 
         return sorted(eventos_split, key=lambda evento: evento.data_evento, reverse=True)
+
+    def _converter_precos_historicos(
+        self,
+        resultado: dict,
+        ticker_original: str,
+    ) -> list[YahooPrecoHistorico]:
+        meta = resultado.get("meta") or {}
+        ticker = str(meta.get("symbol") or ticker_original).upper()
+        timestamps = resultado.get("timestamp") or []
+        indicadores = resultado.get("indicators") or {}
+        quote = (indicadores.get("quote") or [{}])[0]
+        fechamentos = quote.get("close") or []
+
+        precos = []
+        for timestamp, fechamento in zip(timestamps, fechamentos):
+            fechamento_decimal = decimal_ou_none(fechamento)
+            if timestamp is None or fechamento_decimal is None:
+                continue
+
+            precos.append(
+                YahooPrecoHistorico(
+                    ticker=ticker,
+                    data_referencia=datetime.fromtimestamp(timestamp, tz=timezone.utc).date(),
+                    fechamento=fechamento_decimal,
+                )
+            )
+
+        return sorted(precos, key=lambda preco: preco.data_referencia)

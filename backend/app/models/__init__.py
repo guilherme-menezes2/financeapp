@@ -112,6 +112,24 @@ class CotacaoAtivo(Base):
     ativo = relationship("Ativo", back_populates="cotacoes")
 
 
+class CotacaoHistoricaAtivo(Base):
+    __tablename__ = "cotacoes_historicas_ativos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ativo_id = Column(Integer, ForeignKey("ativos.id"), nullable=False)
+    ticker = Column(String(20), nullable=False, index=True)
+    data_referencia = Column(Date, nullable=False, index=True)
+    preco_fechamento = Column(Numeric(12, 2), nullable=False)
+    fonte = Column(String(40), nullable=False, default="yahoo_finance")
+    criado_em = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    ativo = relationship("Ativo")
+
+    __table_args__ = (
+        UniqueConstraint("ativo_id", "data_referencia", name="uq_cotacoes_historicas_ativo_data"),
+    )
+
+
 class ProventoAtivo(Base):
     __tablename__ = "proventos_ativos"
 

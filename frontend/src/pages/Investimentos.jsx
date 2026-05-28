@@ -30,9 +30,8 @@ import {
   listarAtivos,
   listarMovimentacoesAtivo,
   listarProventos,
-  listarSnapshotsCarteira,
+  obterEvolucaoCarteira,
   obterResumoCarteira,
-  registrarSnapshotCarteira,
 } from "../services/ativosService.js";
 import {
   formatarData,
@@ -103,14 +102,14 @@ const pageConfig = {
   },
   evolucao: {
     title: "Evolucao",
-    description: "Acompanhe snapshots e historico da carteira de investimentos.",
+    description: "Acompanhe a evolucao mensal real da carteira por cotacoes historicas.",
   },
 };
 
 function Investimentos({ view = "carteira" }) {
   const [ativos, setAtivos] = useState([]);
   const [proventos, setProventos] = useState([]);
-  const [snapshots, setSnapshots] = useState([]);
+  const [evolucaoCarteira, setEvolucaoCarteira] = useState({ dados: [], avisos: [], atualizado_em: null });
   const [movimentacoes, setMovimentacoes] = useState([]);
   const [resumo, setResumo] = useState(null);
   const [formData, setFormData] = useState(formularioInicial);
@@ -124,7 +123,7 @@ function Investimentos({ view = "carteira" }) {
   const [salvandoMovimentacao, setSalvandoMovimentacao] = useState(false);
   const [atualizando, setAtualizando] = useState(false);
   const [atualizandoProventos, setAtualizandoProventos] = useState(false);
-  const [registrandoSnapshot, setRegistrandoSnapshot] = useState(false);
+  const [atualizandoEvolucao, setAtualizandoEvolucao] = useState(false);
   const [atualizandoId, setAtualizandoId] = useState(null);
   const [excluindoId, setExcluindoId] = useState(null);
   const [excluindoMovimentacaoId, setExcluindoMovimentacaoId] = useState(null);
@@ -152,19 +151,18 @@ function Investimentos({ view = "carteira" }) {
     [resumo]
   );
 
-  const ultimoSnapshot = snapshots.length ? snapshots[snapshots.length - 1] : null;
-
   const dadosEvolucao = useMemo(
     () =>
-      snapshots.map((snapshot) => ({
-        data: snapshot.data_referencia,
-        patrimonio: Number(snapshot.patrimonio_total || 0),
-        investido: Number(snapshot.valor_investido_total || 0),
-        resultado: Number(snapshot.lucro_prejuizo_total || 0),
-        rentabilidade: Number(snapshot.rentabilidade_percentual || 0),
-        quantidade_ativos: Number(snapshot.quantidade_ativos || 0),
+      (evolucaoCarteira.dados || []).map((item) => ({
+        mes: item.mes,
+        data: item.data_referencia,
+        patrimonio: Number(item.patrimonio_total || 0),
+        investido: Number(item.valor_investido_total || 0),
+        resultado: Number(item.lucro_prejuizo_total || 0),
+        rentabilidade: Number(item.rentabilidade_percentual || 0),
+        quantidade_ativos: Number(item.quantidade_ativos || 0),
       })),
-    [snapshots]
+    [evolucaoCarteira.dados]
   );
 
   const resumoEvolucao = useMemo(() => {
@@ -375,16 +373,16 @@ function Investimentos({ view = "carteira" }) {
     try {
       setLoading(true);
       setErro("");
-      const [ativosData, resumoData, proventosData, snapshotsData] = await Promise.all([
+      const [ativosData, resumoData, proventosData, evolucaoData] = await Promise.all([
         listarAtivos(),
         obterResumoCarteira(),
         listarProventos(),
-        listarSnapshotsCarteira(),
+        mostrarEvolucao ? obterEvolucaoCarteira(false) : Promise.resolve(evolucaoCarteira),
       ]);
       setAtivos(ativosData);
       setResumo(resumoData);
       setProventos(proventosData);
-      setSnapshots(snapshotsData);
+      setEvolucaoCarteira(evolucaoData);
       setFiltrosProventos((dadosAtuais) => {
         if (!dadosAtuais.ativoId) {
           return dadosAtuais;
@@ -407,7 +405,7 @@ function Investimentos({ view = "carteira" }) {
 
   useEffect(() => {
     carregarCarteira();
-  }, []);
+  }, [view]);
 
   function atualizarCampo(campo, valor) {
     setFormData((dadosAtuais) => ({
@@ -742,18 +740,18 @@ function Investimentos({ view = "carteira" }) {
     }
   }
 
-  async function handleRegistrarSnapshot() {
+  async function handleAtualizarEvolucao() {
     try {
-      setRegistrandoSnapshot(true);
+      setAtualizandoEvolucao(true);
       setErro("");
       setMensagem("");
-      await registrarSnapshotCarteira();
-      await carregarCarteira();
-      setMensagem("Snapshot da carteira registrado com sucesso.");
+      const dados = await obterEvolucaoCarteira(true);
+      setEvolucaoCarteira(dados);
+      setMensagem("Evolucao da carteira atualizada com cotacoes historicas.");
     } catch (error) {
-      setErro(extrairMensagemErro(error, "Nao foi possivel registrar o snapshot da carteira."));
+      setErro(extrairMensagemErro(error, "Nao foi possivel atualizar a evolucao da carteira."));
     } finally {
-      setRegistrandoSnapshot(false);
+      setAtualizandoEvolucao(false);
     }
   }
 
@@ -801,8 +799,8 @@ function Investimentos({ view = "carteira" }) {
               </button>
             ) : null}
             {view === "evolucao" ? (
-              <button className="button primary" type="button" disabled={registrandoSnapshot || !temAtivos} onClick={handleRegistrarSnapshot}>
-                {registrandoSnapshot ? "Registrando..." : "Registrar snapshot"}
+              <button className="button primary" type="button" disabled={atualizandoEvolucao || !temAtivos} onClick={handleAtualizarEvolucao}>
+                {atualizandoEvolucao ? "Atualizando..." : "Atualizar evolucao"}
               </button>
             ) : null}
             {view === "carteira" ? (
@@ -931,7 +929,7 @@ function Investimentos({ view = "carteira" }) {
                   ? formatarDataHora(resumoNormalizado.ultima_atualizacao)
                   : "Sem cotacoes"}
               </strong>
-              <p>{ultimoSnapshot ? `Snapshot mais recente em ${formatarData(ultimoSnapshot.data_referencia)}.` : "Registre snapshots para acompanhar a evolucao."}</p>
+              <p>A evolucao usa cotacoes historicas mensais e as movimentacoes registradas.</p>
               <Link className="button small" to="/investimentos/evolucao">
                 Ver evolucao
               </Link>
@@ -1653,20 +1651,27 @@ function Investimentos({ view = "carteira" }) {
             <div className="panel-header">
               <div>
                 <h2>Evolucao da carteira</h2>
-                <span>Historico gerado a partir dos snapshots da carteira.</span>
+                <span>Calculo mensal com base na quantidade historica e no ultimo fechamento disponivel de cada mes.</span>
               </div>
-              <button className="button small" type="button" disabled={registrandoSnapshot || !temAtivos} onClick={handleRegistrarSnapshot}>
-                {registrandoSnapshot ? "Registrando..." : "Registrar snapshot"}
+              <button className="button small" type="button" disabled={atualizandoEvolucao || !temAtivos} onClick={handleAtualizarEvolucao}>
+                {atualizandoEvolucao ? "Atualizando..." : "Atualizar evolucao"}
               </button>
             </div>
+            {evolucaoCarteira.avisos?.length ? (
+              <div className="state-box warning">
+                {evolucaoCarteira.avisos.slice(0, 4).map((aviso) => (
+                  <p key={aviso}>{aviso}</p>
+                ))}
+                {evolucaoCarteira.avisos.length > 4 ? <p>Mais {evolucaoCarteira.avisos.length - 4} aviso(s) omitido(s).</p> : null}
+              </div>
+            ) : null}
             {dadosEvolucao.length ? (
               <div className="chart-frame evolution-chart-frame">
                 <ResponsiveContainer width="100%" height={380}>
                   <LineChart data={dadosEvolucao} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
                     <CartesianGrid stroke="#e2e8f0" vertical={false} />
                     <XAxis
-                      dataKey="data"
-                      tickFormatter={formatarData}
+                      dataKey="mes"
                       tick={{ fill: "#64748b", fontSize: 12 }}
                       axisLine={false}
                       tickLine={false}
@@ -1680,7 +1685,7 @@ function Investimentos({ view = "carteira" }) {
                     />
                     <Tooltip
                       formatter={(valor, nome) => [formatarMoeda(valor), nome]}
-                      labelFormatter={(data) => formatarData(data)}
+                      labelFormatter={(mes) => `Mes ${mes}`}
                       contentStyle={{
                         border: "1px solid #dce4ef",
                         borderRadius: 10,
@@ -1695,7 +1700,10 @@ function Investimentos({ view = "carteira" }) {
                 </ResponsiveContainer>
               </div>
             ) : (
-              <div className="empty-chart">Registre um snapshot para comecar a acompanhar a evolucao da carteira.</div>
+              <div className="empty-dashboard">
+                <h2>Nenhuma evolucao calculada</h2>
+                <p>Registre movimentacoes de compra para gerar a evolucao mensal da carteira.</p>
+              </div>
             )}
           </article>
 
@@ -1703,8 +1711,8 @@ function Investimentos({ view = "carteira" }) {
             <article className="panel table-panel">
               <div className="panel-header">
                 <div>
-                  <h2>Historico de snapshots</h2>
-                  <span>Valores consolidados salvos para comparacao ao longo do tempo.</span>
+                  <h2>Historico mensal</h2>
+                  <span>Valores calculados pelo fechamento historico de cada mes.</span>
                 </div>
                 <strong className={resumoEvolucao.melhorResultado >= 0 ? "value-income" : "value-expense"}>
                   Melhor resultado: {formatarMoeda(resumoEvolucao.melhorResultado)}
@@ -1714,7 +1722,8 @@ function Investimentos({ view = "carteira" }) {
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Data</th>
+                      <th>Mes</th>
+                      <th>Data ref.</th>
                       <th>Ativos</th>
                       <th>Patrimonio</th>
                       <th>Investido</th>
@@ -1723,23 +1732,24 @@ function Investimentos({ view = "carteira" }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {[...dadosEvolucao].reverse().map((snapshot) => (
-                      <tr key={snapshot.data}>
-                        <td data-label="Data">{formatarData(snapshot.data)}</td>
-                        <td data-label="Ativos">{snapshot.quantidade_ativos}</td>
-                        <td data-label="Patrimonio">{formatarMoeda(snapshot.patrimonio)}</td>
-                        <td data-label="Investido">{formatarMoeda(snapshot.investido)}</td>
+                    {[...dadosEvolucao].reverse().map((item) => (
+                      <tr key={item.mes}>
+                        <td data-label="Mes">{item.mes}</td>
+                        <td data-label="Data ref.">{item.data ? formatarData(item.data) : "-"}</td>
+                        <td data-label="Ativos">{item.quantidade_ativos}</td>
+                        <td data-label="Patrimonio">{formatarMoeda(item.patrimonio)}</td>
+                        <td data-label="Investido">{formatarMoeda(item.investido)}</td>
                         <td
                           data-label="Resultado"
-                          className={snapshot.resultado >= 0 ? "value-income" : "value-expense"}
+                          className={item.resultado >= 0 ? "value-income" : "value-expense"}
                         >
-                          {formatarMoeda(snapshot.resultado)}
+                          {formatarMoeda(item.resultado)}
                         </td>
                         <td
                           data-label="Rentabilidade"
-                          className={snapshot.rentabilidade >= 0 ? "value-income" : "value-expense"}
+                          className={item.rentabilidade >= 0 ? "value-income" : "value-expense"}
                         >
-                          {formatarPercentual(snapshot.rentabilidade)}
+                          {formatarPercentual(item.rentabilidade)}
                         </td>
                       </tr>
                     ))}

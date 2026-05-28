@@ -170,6 +170,22 @@ def aplicar_migracoes_sqlite():
                 connection.execute(text("PRAGMA legacy_alter_table=OFF"))
                 connection.execute(text("PRAGMA foreign_keys=ON"))
 
+        if "cotacoes_historicas_ativos" in tabelas:
+            indices_cotacoes_historicas = {
+                indice["name"] for indice in inspector.get_indexes("cotacoes_historicas_ativos")
+            }
+            if "ix_cotacoes_historicas_ativos_ticker" not in indices_cotacoes_historicas:
+                connection.execute(
+                    text("CREATE INDEX ix_cotacoes_historicas_ativos_ticker ON cotacoes_historicas_ativos (ticker)")
+                )
+            if "ix_cotacoes_historicas_ativos_data_referencia" not in indices_cotacoes_historicas:
+                connection.execute(
+                    text(
+                        "CREATE INDEX ix_cotacoes_historicas_ativos_data_referencia "
+                        "ON cotacoes_historicas_ativos (data_referencia)"
+                    )
+                )
+
         if "lancamentos" not in tabelas:
             return
 

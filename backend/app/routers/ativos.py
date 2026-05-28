@@ -12,6 +12,7 @@ from app.services.ativos_service import (
     atualizar_todos_ativos,
     buscar_ativo_ou_404,
     calcular_resumo_carteira,
+    calcular_evolucao_real_carteira,
     criar_snapshot_carteira,
     criar_movimentacao_ativo,
     atualizar_movimentacao_ativo,
@@ -65,6 +66,16 @@ def listar_snapshots(
     db: Session = Depends(get_db),
 ):
     return listar_snapshots_carteira(db, limite)
+
+
+@router.get("/evolucao", response_model=schemas.EvolucaoCarteiraResponse)
+def obter_evolucao_carteira(
+    atualizar_cache: bool = Query(default=False),
+    db: Session = Depends(get_db),
+):
+    resultado = calcular_evolucao_real_carteira(db, atualizar_cache)
+    db.commit()
+    return resultado
 
 
 @router.post("/snapshots", response_model=schemas.SnapshotCarteiraResponse)
