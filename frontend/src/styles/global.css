@@ -509,6 +509,80 @@ p {
   font-size: 1.05rem;
 }
 
+.investment-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.75fr);
+  gap: 16px;
+}
+
+.investment-highlight-panel,
+.allocation-panel {
+  min-width: 0;
+}
+
+.investment-highlight-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.investment-highlight-item,
+.dividend-summary-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.investment-highlight-item strong,
+.dividend-summary-card strong {
+  color: var(--text-strong);
+  font-size: 1.2rem;
+  line-height: 1.2;
+}
+
+.investment-highlight-item small,
+.dividend-summary-card small,
+.dividend-ranking-row small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.allocation-list,
+.dividend-ranking-list {
+  display: grid;
+  gap: 12px;
+}
+
+.allocation-row,
+.dividend-ranking-row {
+  display: grid;
+  gap: 8px;
+}
+
+.allocation-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.allocation-row-head strong {
+  color: var(--text-strong);
+}
+
+.allocation-row-head span {
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.progress-fill.allocation {
+  background: var(--balance);
+}
+
 .investment-overview-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -579,9 +653,113 @@ p {
   gap: 18px;
 }
 
+.selected-asset-hero {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.75fr) minmax(0, 1.25fr);
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.selected-asset-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.selected-asset-title h2 {
+  margin: 2px 0 0;
+  font-size: 1.5rem;
+}
+
+.selected-asset-title p {
+  display: -webkit-box;
+  margin: 4px 0 0;
+  max-width: 420px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.asset-avatar.large {
+  width: 56px;
+  height: 56px;
+  flex-basis: 56px;
+  font-size: 1rem !important;
+  background: #ccfbf1;
+}
+
+.selected-asset-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.selected-asset-metrics > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.selected-asset-metrics span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.selected-asset-metrics strong {
+  color: var(--text-strong);
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.movement-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.34fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.movement-form-card,
+.movement-summary-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: #fbfdff;
+}
+
+.movement-form-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.movement-form-head h2 {
+  margin-bottom: 4px;
+}
+
+.movement-form-head span:not(.type-pill) {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .movement-form-grid {
   display: grid;
-  grid-template-columns: minmax(120px, 0.7fr) repeat(3, minmax(140px, 1fr)) minmax(220px, 1.3fr) auto;
+  grid-template-columns: minmax(120px, 0.7fr) repeat(3, minmax(140px, 1fr)) minmax(220px, 1.3fr);
   gap: 16px;
   align-items: end;
 }
@@ -614,6 +792,110 @@ p {
 .movement-table {
   border: 1px solid var(--border-soft);
   border-radius: var(--radius);
+}
+
+.movement-summary-card > div {
+  display: grid;
+  gap: 4px;
+}
+
+.movement-summary-card > div > strong {
+  color: var(--text-strong);
+  font-size: 1.6rem;
+}
+
+.movement-summary-card small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.movement-summary-grid,
+.movement-summary-values {
+  display: grid;
+  gap: 8px;
+}
+
+.movement-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.movement-summary-grid span,
+.movement-summary-values span {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  background: #ffffff;
+}
+
+.movement-summary-grid strong,
+.movement-summary-values strong {
+  color: var(--text-strong);
+  font-size: 0.98rem;
+  text-transform: none;
+}
+
+.movement-row.purchase {
+  box-shadow: inset 4px 0 0 var(--income);
+}
+
+.movement-row.sale {
+  box-shadow: inset 4px 0 0 var(--expense);
+}
+
+.movement-row.split {
+  box-shadow: inset 4px 0 0 var(--balance);
+}
+
+.movement-event-cell {
+  display: grid;
+  gap: 5px;
+}
+
+.movement-event-cell small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.price-average-flow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: max-content;
+}
+
+.price-average-flow span {
+  margin: 0 !important;
+  color: #334155 !important;
+  font-size: 0.88rem !important;
+}
+
+.price-average-flow strong {
+  color: var(--muted) !important;
+}
+
+.realized-profit {
+  display: inline-flex !important;
+  width: fit-content;
+  min-height: 30px;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-weight: 900;
+}
+
+.realized-profit.positive {
+  color: var(--income);
+  background: var(--income-bg);
+}
+
+.realized-profit.negative {
+  color: var(--expense);
+  background: var(--expense-bg);
 }
 
 .evolution-panel {
@@ -667,6 +949,45 @@ p {
   gap: 12px;
   align-items: end;
   padding: 0 22px 18px;
+}
+
+.dividend-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 18px 22px;
+}
+
+.dividend-content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.7fr);
+  gap: 16px;
+  padding: 0 22px 22px;
+}
+
+.dividend-chart-panel,
+.dividend-ranking-panel {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: #fbfdff;
+}
+
+.dividend-chart-panel .panel-header,
+.dividend-ranking-panel .panel-header {
+  margin-bottom: 8px;
+}
+
+.dividend-chart-frame {
+  min-height: 300px;
+}
+
+.dividend-table-full {
+  grid-column: 1 / -1;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: #ffffff;
 }
 
 .proventos-filters label {
@@ -1054,6 +1375,71 @@ p {
   font-size: 0.88rem;
 }
 
+.asset-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 220px;
+}
+
+.asset-cell > div {
+  min-width: 0;
+}
+
+.asset-cell em {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #475569;
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+  background: #e2e8f0;
+}
+
+.asset-avatar {
+  display: grid !important;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border-radius: 10px;
+  color: #0f172a !important;
+  font-size: 0.82rem !important;
+  font-weight: 900;
+  background: #dbeafe;
+}
+
+.result-cell {
+  display: grid;
+  width: fit-content;
+  min-width: 116px;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+
+.result-cell.positive {
+  background: var(--income-bg);
+}
+
+.result-cell.negative {
+  background: var(--expense-bg);
+}
+
+.allocation-mini {
+  display: grid;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.allocation-mini strong {
+  color: var(--text-strong);
+}
+
 .type-pill,
 .category-chip {
   display: inline-flex;
@@ -1139,6 +1525,7 @@ p {
   }
 
   .dashboard-insights,
+  .investment-dashboard-grid,
   .expense-breakdown-grid {
     grid-template-columns: 1fr;
   }
@@ -1153,6 +1540,21 @@ p {
 
   .investment-overview-grid {
     grid-template-columns: 1fr;
+  }
+
+  .investment-highlight-grid,
+  .dividend-summary-grid,
+  .dividend-content-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .selected-asset-hero,
+  .movement-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .selected-asset-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .movement-form-grid {
@@ -1216,11 +1618,17 @@ p {
     .dashboard-grid,
     .dashboard-flow-grid,
     .dashboard-insights,
+    .investment-dashboard-grid,
     .flow-filters,
     .filters-panel,
     .proventos-filters,
+    .dividend-summary-grid,
+    .dividend-content-grid,
+    .investment-highlight-grid,
+    .selected-asset-metrics,
   .investment-form-grid,
   .movement-form-grid,
+  .movement-summary-grid,
   .investment-overview-grid,
   .investment-status-panel,
   .form-grid,
@@ -1285,6 +1693,15 @@ p {
 
   .table-actions {
     align-items: center;
+  }
+
+  .selected-asset-title,
+  .movement-form-head {
+    display: grid;
+  }
+
+  .movement-form-head .type-pill {
+    width: fit-content;
   }
 
   .table-summary {

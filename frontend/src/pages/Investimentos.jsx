@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
   Legend,
   Line,
@@ -63,6 +65,14 @@ const filtroProventosInicial = {
   ativoId: "",
   buscaAtivo: "",
 };
+
+function numero(valor) {
+  return Number(valor || 0);
+}
+
+function obterMes(data) {
+  return data ? data.slice(0, 7) : "";
+}
 
 function extrairMensagemErro(error, fallback) {
   const detail = error?.response?.data?.detail;
@@ -188,13 +198,70 @@ function Investimentos({ view = "carteira" }) {
     };
   }, [dadosEvolucao]);
 
+  const ativosComMetricas = useMemo(() => {
+    const patrimonioTotal = numero(resumoNormalizado.patrimonio_total);
+
+    return ativos.map((ativo) => {
+      const valorAtual = numero(ativo.valor_atual);
+      const valorInvestido = numero(ativo.valor_investido);
+      const resultado = numero(ativo.lucro_prejuizo);
+      const rentabilidade = numero(ativo.rentabilidade_percentual);
+      const participacao = patrimonioTotal ? (valorAtual / patrimonioTotal) * 100 : 0;
+
+      return {
+        ...ativo,
+        valorAtualNumero: valorAtual,
+        valorInvestidoNumero: valorInvestido,
+        resultadoNumero: resultado,
+        rentabilidadeNumero: rentabilidade,
+        participacao,
+      };
+    });
+  }, [ativos, resumoNormalizado.patrimonio_total]);
+
   const totalLucroRealizado = useMemo(
     () =>
       movimentacoes
         .filter((movimentacao) => movimentacao.tipo === "venda")
-        .reduce((total, movimentacao) => total + Number(movimentacao.lucro_prejuizo || 0), 0),
+        .reduce((total, movimentacao) => total + numero(movimentacao.lucro_prejuizo), 0),
     [movimentacoes]
   );
+
+  const ativoSelecionadoMetricas = useMemo(() => {
+    if (!ativoSelecionado) {
+      return null;
+    }
+
+    return (
+      ativosComMetricas.find((ativo) => ativo.id === ativoSelecionado.id) || {
+        ...ativoSelecionado,
+        valorAtualNumero: numero(ativoSelecionado.valor_atual),
+        valorInvestidoNumero: numero(ativoSelecionado.valor_investido),
+        resultadoNumero: numero(ativoSelecionado.lucro_prejuizo),
+        rentabilidadeNumero: numero(ativoSelecionado.rentabilidade_percentual),
+        participacao: 0,
+      }
+    );
+  }, [ativoSelecionado, ativosComMetricas]);
+
+  const resumoMovimentacoes = useMemo(() => {
+    return movimentacoes.reduce(
+      (resumoAtual, movimentacao) => {
+        if (movimentacao.tipo === "compra") {
+          resumoAtual.compras += 1;
+          resumoAtual.totalCompras += numero(movimentacao.valor_total);
+        } else if (movimentacao.tipo === "venda") {
+          resumoAtual.vendas += 1;
+          resumoAtual.totalVendas += numero(movimentacao.valor_total);
+        } else if (movimentacao.tipo === "split") {
+          resumoAtual.splits += 1;
+        }
+
+        return resumoAtual;
+      },
+      { compras: 0, vendas: 0, splits: 0, totalCompras: 0, totalVendas: 0 }
+    );
+  }, [movimentacoes]);
 
   const movimentacaoEhSplit = movimentacaoData.tipo === "split";
 
@@ -227,14 +294,82 @@ function Investimentos({ view = "carteira" }) {
     });
   }, [filtrosProventos.ativoId, filtrosProventos.dataFim, filtrosProventos.dataInicio, proventos]);
 
-  const totalProventos = useMemo(
+  const totalProventosGeral = useMemo(
+    () => proventos.reduce((total, provento) => total + numero(provento.valor_estimado), 0),
+    [proventos]
+  );
+
+  const totalProventosFiltrados = useMemo(
     () =>
       proventosFiltrados.reduce(
-        (total, provento) => total + Number(provento.valor_estimado || 0),
+        (total, provento) => total + numero(provento.valor_estimado),
         0
       ),
     [proventosFiltrados]
   );
+
+  const ativosOrdenadosPorValor = useMemo(
+    () => [...ativosComMetricas].sort((a, b) => b.valorAtualNumero - a.valorAtualNumero),
+    [ativosComMetricas]
+  );
+
+  const maiorPosicao = ativosOrdenadosPorValor[0] || null;
+  const ativosComCotacao = ativosComMetricas.filter(
+    (ativo) => ativo.ultimo_preco !== null && ativo.ultimo_preco !== undefined
+  );
+  const melhorDesempenho = ativosComCotacao.length
+    ? [...ativosComCotacao].sort((a, b) => b.rentabilidadeNumero - a.rentabilidadeNumero)[0]
+    : null;
+  const piorDesempenho = ativosComCotacao.length
+    ? [...ativosComCotacao].sort((a, b) => a.rentabilidadeNumero - b.rentabilidadeNumero)[0]
+    : null;
+  const ultimoProvento = proventos[0] || null;
+
+  const topAlocacao = ativosOrdenadosPorValor.filter((ativo) => ativo.valorAtualNumero > 0).slice(0, 6);
+
+  const proventosPorAtivo = useMemo(() => {
+    const mapa = new Map();
+
+    proventosFiltrados.forEach((provento) => {
+      const chave = provento.ticker || "Ativo";
+      const itemAtual = mapa.get(chave) || { ticker: chave, total: 0, eventos: 0 };
+      itemAtual.total += numero(provento.valor_estimado);
+      itemAtual.eventos += 1;
+      mapa.set(chave, itemAtual);
+    });
+
+    return [...mapa.values()].sort((a, b) => b.total - a.total);
+  }, [proventosFiltrados]);
+
+  const proventosPorMes = useMemo(() => {
+    const mapa = new Map();
+
+    proventosFiltrados.forEach((provento) => {
+      const mes = obterMes(provento.data_com || provento.data_pagamento);
+      if (!mes) {
+        return;
+      }
+
+      const itemAtual = mapa.get(mes) || { mes, total: 0, eventos: 0 };
+      itemAtual.total += numero(provento.valor_estimado);
+      itemAtual.eventos += 1;
+      mapa.set(mes, itemAtual);
+    });
+
+    return [...mapa.values()].sort((a, b) => a.mes.localeCompare(b.mes));
+  }, [proventosFiltrados]);
+
+  const resumoProventos = useMemo(() => {
+    const maiorPagador = proventosPorAtivo[0] || null;
+    const mediaMensal = proventosPorMes.length ? totalProventosFiltrados / proventosPorMes.length : 0;
+
+    return {
+      maiorPagador,
+      mediaMensal,
+      eventos: proventosFiltrados.length,
+      meses: proventosPorMes.length,
+    };
+  }, [proventosFiltrados.length, proventosPorAtivo, proventosPorMes.length, totalProventosFiltrados]);
 
   async function carregarCarteira() {
     try {
@@ -307,6 +442,15 @@ function Investimentos({ view = "carteira" }) {
   }
 
   async function selecionarAtivo(ativo) {
+    if (ativoSelecionado?.id === ativo.id) {
+      setAtivoSelecionado(null);
+      setMovimentacoes([]);
+      limparFormularioMovimentacao();
+      setErro("");
+      setMensagem("");
+      return;
+    }
+
     try {
       setAtivoSelecionado(ativo);
       limparFormularioMovimentacao();
@@ -690,22 +834,82 @@ function Investimentos({ view = "carteira" }) {
             />
           </div>
 
-          <section className="panel investment-status-panel">
-            <div>
-              <span className="insight-kicker">Carteira</span>
-              <strong>{resumoNormalizado.quantidade_ativos} ativo(s) cadastrado(s)</strong>
-            </div>
-            <div>
-              <span className="insight-kicker">Ultima atualizacao</span>
-              <strong>{resumoNormalizado.ultima_atualizacao ? formatarDataHora(resumoNormalizado.ultima_atualizacao) : "Sem cotacoes"}</strong>
-            </div>
+          <section className="investment-dashboard-grid">
+            <article className="panel investment-highlight-panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Leitura rapida</h2>
+                  <span>Principais sinais da carteira no momento.</span>
+                </div>
+              </div>
+
+              <div className="investment-highlight-grid">
+                <div className="investment-highlight-item">
+                  <span className="insight-kicker">Maior posicao</span>
+                  <strong>{maiorPosicao ? maiorPosicao.ticker : "-"}</strong>
+                  <small>{maiorPosicao ? `${formatarMoeda(maiorPosicao.valorAtualNumero)} da carteira` : "Sem ativos"}</small>
+                </div>
+                <div className="investment-highlight-item">
+                  <span className="insight-kicker">Melhor desempenho</span>
+                  <strong className={melhorDesempenho?.rentabilidadeNumero >= 0 ? "value-income" : "value-expense"}>
+                    {melhorDesempenho ? melhorDesempenho.ticker : "-"}
+                  </strong>
+                  <small>{melhorDesempenho ? formatarPercentual(melhorDesempenho.rentabilidadeNumero) : "Sem cotacao"}</small>
+                </div>
+                <div className="investment-highlight-item">
+                  <span className="insight-kicker">Pior desempenho</span>
+                  <strong className={piorDesempenho?.rentabilidadeNumero >= 0 ? "value-income" : "value-expense"}>
+                    {piorDesempenho ? piorDesempenho.ticker : "-"}
+                  </strong>
+                  <small>{piorDesempenho ? formatarPercentual(piorDesempenho.rentabilidadeNumero) : "Sem cotacao"}</small>
+                </div>
+                <div className="investment-highlight-item">
+                  <span className="insight-kicker">Ultimo provento</span>
+                  <strong>{ultimoProvento ? ultimoProvento.ticker : "-"}</strong>
+                  <small>
+                    {ultimoProvento
+                      ? `${formatarMoeda(ultimoProvento.valor_estimado)} em ${formatarData(ultimoProvento.data_com)}`
+                      : "Sem proventos"}
+                  </small>
+                </div>
+              </div>
+            </article>
+
+            <article className="panel allocation-panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Distribuicao</h2>
+                  <span>Participacao por valor atual.</span>
+                </div>
+              </div>
+              {topAlocacao.length ? (
+                <div className="allocation-list">
+                  {topAlocacao.map((ativo) => (
+                    <div className="allocation-row" key={ativo.id}>
+                      <div className="allocation-row-head">
+                        <strong>{ativo.ticker}</strong>
+                        <span>{formatarPercentual(ativo.participacao)}</span>
+                      </div>
+                      <div className="progress-track">
+                        <span
+                          className="progress-fill allocation"
+                          style={{ width: `${Math.min(Math.max(ativo.participacao, 0), 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-chart">Atualize as cotacoes para visualizar a distribuicao.</div>
+              )}
+            </article>
           </section>
 
           <section className="investment-overview-grid">
             <article className="panel investment-overview-card">
-            <span className="insight-kicker">Ativos</span>
-            <strong>{resumoNormalizado.quantidade_ativos} posicao(oes)</strong>
-              <p>Cadastre ativos e registre compras ou vendas no historico de movimentacoes.</p>
+              <span className="insight-kicker">Ativos</span>
+              <strong>{resumoNormalizado.quantidade_ativos} posicao(oes)</strong>
+              <p>Cadastre ativos e registre compras, vendas ou splits no historico.</p>
               <Link className="button small" to="/investimentos/ativos">
                 Gerenciar ativos
               </Link>
@@ -713,17 +917,21 @@ function Investimentos({ view = "carteira" }) {
 
             <article className="panel investment-overview-card">
               <span className="insight-kicker">Proventos</span>
-              <strong>{formatarMoeda(totalProventos)}</strong>
-              <p>Veja dividendos e rendimentos encontrados para os ativos cadastrados.</p>
+              <strong>{formatarMoeda(totalProventosGeral)}</strong>
+              <p>Renda passiva estimada encontrada para os ativos cadastrados.</p>
               <Link className="button small" to="/investimentos/proventos">
                 Ver proventos
               </Link>
             </article>
 
             <article className="panel investment-overview-card">
-              <span className="insight-kicker">Evolucao</span>
-              <strong>{ultimoSnapshot ? formatarData(ultimoSnapshot.data_referencia) : "Sem snapshot"}</strong>
-              <p>Acompanhe o historico do patrimonio a partir dos snapshots da carteira.</p>
+              <span className="insight-kicker">Ultima atualizacao</span>
+              <strong>
+                {resumoNormalizado.ultima_atualizacao
+                  ? formatarDataHora(resumoNormalizado.ultima_atualizacao)
+                  : "Sem cotacoes"}
+              </strong>
+              <p>{ultimoSnapshot ? `Snapshot mais recente em ${formatarData(ultimoSnapshot.data_referencia)}.` : "Registre snapshots para acompanhar a evolucao."}</p>
               <Link className="button small" to="/investimentos/evolucao">
                 Ver evolucao
               </Link>
@@ -811,19 +1019,29 @@ function Investimentos({ view = "carteira" }) {
                     <th>Investido</th>
                     <th>Valor atual</th>
                     <th>Resultado</th>
+                    <th>Participacao</th>
                     <th>{view === "ativos" ? "Acoes" : "Atalhos"}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {ativos.map((ativo) => {
-                    const resultado = Number(ativo.lucro_prejuizo || 0);
+                  {ativosComMetricas.map((ativo) => {
+                    const resultado = ativo.resultadoNumero;
                     const temCotacao = ativo.ultimo_preco !== null && ativo.ultimo_preco !== undefined;
 
                     return (
-                      <tr key={ativo.id}>
+                      <tr
+                        key={ativo.id}
+                        className={ativoSelecionado?.id === ativo.id && view === "ativos" ? "selected-row" : ""}
+                      >
                         <td data-label="Ativo">
-                          <strong>{ativo.ticker}</strong>
-                          <span>{ativo.nome || ativo.tipo || "Sem nome"}</span>
+                          <div className="asset-cell">
+                            <span className="asset-avatar">{ativo.ticker?.slice(0, 2) || "AT"}</span>
+                            <div>
+                              <strong>{ativo.ticker}</strong>
+                              <span>{ativo.nome || "Sem nome"}</span>
+                              {ativo.tipo ? <em>{ativo.tipo}</em> : null}
+                            </div>
+                          </div>
                         </td>
                         <td data-label="Quantidade">{Number(ativo.quantidade).toLocaleString("pt-BR")}</td>
                         <td data-label="Preco medio">{formatarMoeda(ativo.preco_medio)}</td>
@@ -841,14 +1059,29 @@ function Investimentos({ view = "carteira" }) {
                         <td data-label="Valor atual">{temCotacao ? formatarMoeda(ativo.valor_atual) : "-"}</td>
                         <td data-label="Resultado">
                           {temCotacao ? (
-                            <>
+                            <div className={resultado >= 0 ? "result-cell positive" : "result-cell negative"}>
                               <strong className={resultado >= 0 ? "value-income" : "value-expense"}>
                                 {formatarMoeda(ativo.lucro_prejuizo)}
                               </strong>
                               <span>{formatarPercentual(ativo.rentabilidade_percentual)}</span>
-                            </>
+                            </div>
                           ) : (
                             <span className="muted">Atualize a cotacao</span>
+                          )}
+                        </td>
+                        <td data-label="Participacao">
+                          {temCotacao ? (
+                            <div className="allocation-mini">
+                              <strong>{formatarPercentual(ativo.participacao)}</strong>
+                              <div className="progress-track">
+                                <span
+                                  className="progress-fill allocation"
+                                  style={{ width: `${Math.min(Math.max(ativo.participacao, 0), 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            "-"
                           )}
                         </td>
                         <td data-label="Acoes">
@@ -867,7 +1100,7 @@ function Investimentos({ view = "carteira" }) {
                                   Editar
                                 </button>
                                 <button className="button small" type="button" onClick={() => selecionarAtivo(ativo)}>
-                                  Movimentacoes
+                                  {ativoSelecionado?.id === ativo.id ? "Fechar" : "Movimentacoes"}
                                 </button>
                                 <button
                                   className="button small danger"
@@ -902,114 +1135,176 @@ function Investimentos({ view = "carteira" }) {
 
       {!loading && mostrarFormularioAtivos && ativoSelecionado ? (
         <section className="panel investment-movements-panel">
-          <div className="panel-header">
-            <div>
-              <h2>Movimentacoes de {ativoSelecionado.ticker}</h2>
-              <span>
-                Posicao atual: {Number(ativoSelecionado.quantidade).toLocaleString("pt-BR")} cota(s) a{" "}
-                {formatarMoeda(ativoSelecionado.preco_medio)}
-              </span>
+          <div className="selected-asset-hero">
+            <div className="selected-asset-title">
+              <span className="asset-avatar large">{ativoSelecionado.ticker?.slice(0, 2) || "AT"}</span>
+              <div>
+                <span className="insight-kicker">Ativo selecionado</span>
+                <h2>{ativoSelecionado.ticker}</h2>
+                <p>{ativoSelecionado.nome || "Sem nome cadastrado"}</p>
+              </div>
             </div>
-            <strong className={totalLucroRealizado >= 0 ? "value-income" : "value-expense"}>
-              {formatarMoeda(totalLucroRealizado)}
-            </strong>
+
+            <div className="selected-asset-metrics">
+              <div>
+                <span>Quantidade</span>
+                <strong>{Number(ativoSelecionado.quantidade).toLocaleString("pt-BR")}</strong>
+              </div>
+              <div>
+                <span>Preco medio</span>
+                <strong>{formatarMoeda(ativoSelecionado.preco_medio)}</strong>
+              </div>
+              <div>
+                <span>Valor atual</span>
+                <strong>{formatarMoeda(ativoSelecionadoMetricas?.valorAtualNumero || 0)}</strong>
+              </div>
+              <div>
+                <span>Resultado</span>
+                <strong
+                  className={
+                    (ativoSelecionadoMetricas?.resultadoNumero || 0) >= 0 ? "value-income" : "value-expense"
+                  }
+                >
+                  {formatarMoeda(ativoSelecionadoMetricas?.resultadoNumero || 0)}
+                </strong>
+              </div>
+              <div>
+                <span>Lucro realizado</span>
+                <strong className={totalLucroRealizado >= 0 ? "value-income" : "value-expense"}>
+                  {formatarMoeda(totalLucroRealizado)}
+                </strong>
+              </div>
+            </div>
           </div>
 
-          <form className="movement-form-grid" onSubmit={handleCriarMovimentacao}>
-            <label>
-              Tipo
-              <select
-                value={movimentacaoData.tipo}
-                onChange={(event) => atualizarCampoMovimentacao("tipo", event.target.value)}
-              >
-                <option value="compra">Compra</option>
-                <option value="venda">Venda</option>
-                <option value="split">Split</option>
-              </select>
-            </label>
+          <div className="movement-workspace">
+            <form className="movement-form-card" onSubmit={handleCriarMovimentacao}>
+              <div className="movement-form-head">
+                <div>
+                  <h2>{movimentacaoEditando ? "Editar movimentacao" : "Nova movimentacao"}</h2>
+                  <span>{movimentacaoEhSplit ? "Evento corporativo" : "Compra ou venda do ativo"}</span>
+                </div>
+                <span className={`type-pill ${movimentacaoEhSplit ? "neutral" : movimentacaoData.tipo === "venda" ? "expense" : "income"}`}>
+                  {movimentacaoEhSplit ? "Split" : movimentacaoData.tipo === "venda" ? "Venda" : "Compra"}
+                </span>
+              </div>
 
-            {!movimentacaoEhSplit ? (
-              <>
+              <div className="movement-form-grid">
                 <label>
-                  Quantidade
+                  Tipo
+                  <select
+                    value={movimentacaoData.tipo}
+                    onChange={(event) => atualizarCampoMovimentacao("tipo", event.target.value)}
+                  >
+                    <option value="compra">Compra</option>
+                    <option value="venda">Venda</option>
+                    <option value="split">Split</option>
+                  </select>
+                </label>
+
+                {!movimentacaoEhSplit ? (
+                  <>
+                    <label>
+                      Quantidade
+                      <input
+                        type="number"
+                        min="0.000001"
+                        step="0.000001"
+                        value={movimentacaoData.quantidade}
+                        placeholder="0"
+                        onChange={(event) => atualizarCampoMovimentacao("quantidade", event.target.value)}
+                      />
+                    </label>
+
+                    <label>
+                      Preco unitario
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={movimentacaoData.preco_unitario}
+                        placeholder="0.00"
+                        onChange={(event) => atualizarCampoMovimentacao("preco_unitario", event.target.value)}
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label>
+                      Fator numerador
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={movimentacaoData.fator_numerador}
+                        placeholder="10"
+                        onChange={(event) => atualizarCampoMovimentacao("fator_numerador", event.target.value)}
+                      />
+                    </label>
+
+                    <label>
+                      Fator denominador
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={movimentacaoData.fator_denominador}
+                        placeholder="1"
+                        onChange={(event) => atualizarCampoMovimentacao("fator_denominador", event.target.value)}
+                      />
+                    </label>
+                  </>
+                )}
+
+                <label>
+                  Data
                   <input
-                    type="number"
-                    min="0.000001"
-                    step="0.000001"
-                    value={movimentacaoData.quantidade}
-                    placeholder="0"
-                    onChange={(event) => atualizarCampoMovimentacao("quantidade", event.target.value)}
+                    type="date"
+                    value={movimentacaoData.data}
+                    onChange={(event) => atualizarCampoMovimentacao("data", event.target.value)}
                   />
                 </label>
 
                 <label>
-                  Preco unitario
+                  Observacao
                   <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={movimentacaoData.preco_unitario}
-                    placeholder="0.00"
-                    onChange={(event) => atualizarCampoMovimentacao("preco_unitario", event.target.value)}
+                    type="text"
+                    value={movimentacaoData.observacao}
+                    placeholder="Opcional"
+                    onChange={(event) => atualizarCampoMovimentacao("observacao", event.target.value)}
                   />
                 </label>
-              </>
-            ) : (
-              <>
-                <label>
-                  Fator numerador
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={movimentacaoData.fator_numerador}
-                    placeholder="10"
-                    onChange={(event) => atualizarCampoMovimentacao("fator_numerador", event.target.value)}
-                  />
-                </label>
+              </div>
 
-                <label>
-                  Fator denominador
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={movimentacaoData.fator_denominador}
-                    placeholder="1"
-                    onChange={(event) => atualizarCampoMovimentacao("fator_denominador", event.target.value)}
-                  />
-                </label>
-              </>
-            )}
+              <div className="form-actions">
+                {movimentacaoEditando ? (
+                  <button className="button" type="button" onClick={limparFormularioMovimentacao}>
+                    Cancelar
+                  </button>
+                ) : null}
+                <button className="button primary" type="submit" disabled={salvandoMovimentacao}>
+                  {salvandoMovimentacao ? "Salvando..." : movimentacaoEditando ? "Salvar movimentacao" : "Adicionar"}
+                </button>
+              </div>
+            </form>
 
-            <label>
-              Data
-              <input
-                type="date"
-                value={movimentacaoData.data}
-                onChange={(event) => atualizarCampoMovimentacao("data", event.target.value)}
-              />
-            </label>
-
-            <label>
-              Observacao
-              <input
-                type="text"
-                value={movimentacaoData.observacao}
-                placeholder="Opcional"
-                onChange={(event) => atualizarCampoMovimentacao("observacao", event.target.value)}
-              />
-            </label>
-
-            <button className="button primary" type="submit" disabled={salvandoMovimentacao}>
-              {salvandoMovimentacao ? "Salvando..." : movimentacaoEditando ? "Salvar movimentacao" : "Adicionar"}
-            </button>
-            {movimentacaoEditando ? (
-              <button className="button" type="button" onClick={limparFormularioMovimentacao}>
-                Cancelar
-              </button>
-            ) : null}
-          </form>
+            <aside className="movement-summary-card">
+              <span className="insight-kicker">Historico</span>
+              <div>
+                <strong>{movimentacoes.length}</strong>
+                <small>movimentacao(oes)</small>
+              </div>
+              <div className="movement-summary-grid">
+                <span>Compras <strong>{resumoMovimentacoes.compras}</strong></span>
+                <span>Vendas <strong>{resumoMovimentacoes.vendas}</strong></span>
+                <span>Splits <strong>{resumoMovimentacoes.splits}</strong></span>
+              </div>
+              <div className="movement-summary-values">
+                <span>Total comprado <strong>{formatarMoeda(resumoMovimentacoes.totalCompras)}</strong></span>
+                <span>Total vendido <strong>{formatarMoeda(resumoMovimentacoes.totalVendas)}</strong></span>
+              </div>
+            </aside>
+          </div>
 
           {loadingMovimentacoes ? <LoadingState message="Carregando movimentacoes..." /> : null}
 
@@ -1040,12 +1335,18 @@ function Investimentos({ view = "carteira" }) {
                           : "-";
 
                       return (
-                        <tr key={movimentacao.id}>
+                        <tr
+                          key={movimentacao.id}
+                          className={`movement-row ${ehSplit ? "split" : ehVenda ? "sale" : "purchase"}`}
+                        >
                           <td data-label="Data">{formatarData(movimentacao.data)}</td>
                           <td data-label="Tipo">
-                            <span className={`type-pill ${ehSplit ? "neutral" : ehVenda ? "expense" : "income"}`}>
-                              {ehSplit ? `Split ${fatorSplit}` : ehVenda ? "Venda" : "Compra"}
-                            </span>
+                            <div className="movement-event-cell">
+                              <span className={`type-pill ${ehSplit ? "neutral" : ehVenda ? "expense" : "income"}`}>
+                                {ehSplit ? `Split ${fatorSplit}` : ehVenda ? "Venda" : "Compra"}
+                              </span>
+                              <small>{ehSplit ? "Desdobramento" : ehVenda ? "Saida de posicao" : "Aumento de posicao"}</small>
+                            </div>
                           </td>
                           <td data-label="Quantidade">
                             {ehSplit ? "-" : Number(movimentacao.quantidade).toLocaleString("pt-BR")}
@@ -1055,14 +1356,20 @@ function Investimentos({ view = "carteira" }) {
                           </td>
                           <td data-label="Total">{ehSplit ? "-" : formatarMoeda(movimentacao.valor_total)}</td>
                           <td data-label="Preco medio">
-                            {formatarMoeda(movimentacao.preco_medio_antes)} {"->"}{" "}
-                            {formatarMoeda(movimentacao.preco_medio_depois)}
+                            <div className="price-average-flow">
+                              <span>{formatarMoeda(movimentacao.preco_medio_antes)}</span>
+                              <strong>{"->"}</strong>
+                              <span>{formatarMoeda(movimentacao.preco_medio_depois)}</span>
+                            </div>
                           </td>
-                          <td
-                            data-label="Lucro/prejuizo"
-                            className={resultado >= 0 ? "value-income" : "value-expense"}
-                          >
-                            {ehVenda ? formatarMoeda(movimentacao.lucro_prejuizo) : "-"}
+                          <td data-label="Lucro/prejuizo">
+                            {ehVenda ? (
+                              <span className={resultado >= 0 ? "realized-profit positive" : "realized-profit negative"}>
+                                {formatarMoeda(movimentacao.lucro_prejuizo)}
+                              </span>
+                            ) : (
+                              "-"
+                            )}
                           </td>
                           <td data-label="Acoes">
                             <div className="table-actions">
@@ -1106,10 +1413,37 @@ function Investimentos({ view = "carteira" }) {
               <h2>Proventos</h2>
               <span>Dividendos e rendimentos encontrados no Yahoo Finance.</span>
             </div>
-            <strong className="panel-total income">{formatarMoeda(totalProventos)}</strong>
+            <strong className="panel-total income">{formatarMoeda(totalProventosFiltrados)}</strong>
           </div>
           {proventos.length ? (
             <>
+              <div className="dividend-summary-grid">
+                <div className="dividend-summary-card">
+                  <span className="insight-kicker">Total filtrado</span>
+                  <strong>{formatarMoeda(totalProventosFiltrados)}</strong>
+                  <small>{resumoProventos.eventos} evento(s)</small>
+                </div>
+                <div className="dividend-summary-card">
+                  <span className="insight-kicker">Media mensal</span>
+                  <strong>{formatarMoeda(resumoProventos.mediaMensal)}</strong>
+                  <small>{resumoProventos.meses} mes(es) com proventos</small>
+                </div>
+                <div className="dividend-summary-card">
+                  <span className="insight-kicker">Maior pagador</span>
+                  <strong>{resumoProventos.maiorPagador?.ticker || "-"}</strong>
+                  <small>
+                    {resumoProventos.maiorPagador
+                      ? formatarMoeda(resumoProventos.maiorPagador.total)
+                      : "Sem dados no periodo"}
+                  </small>
+                </div>
+                <div className="dividend-summary-card">
+                  <span className="insight-kicker">Ativos pagadores</span>
+                  <strong>{proventosPorAtivo.length}</strong>
+                  <small>ativo(s) no filtro atual</small>
+                </div>
+              </div>
+
               <div className="proventos-filters">
                 <label>
                   Data inicial
@@ -1163,42 +1497,115 @@ function Investimentos({ view = "carteira" }) {
               </div>
 
               {proventosFiltrados.length ? (
-                <div className="table-scroll">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Ativo</th>
-                        <th>Tipo</th>
-                        <th>Data com</th>
-                        <th>Valor por cota</th>
-                        <th>Quantidade</th>
-                        <th>Total estimado</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {proventosFiltrados.map((provento) => (
-                        <tr key={provento.id}>
-                          <td data-label="Ativo">
-                            <strong>{provento.ticker}</strong>
-                            <span>{provento.fonte}</span>
-                          </td>
-                          <td data-label="Tipo">{provento.tipo || "Provento"}</td>
-                          <td data-label="Data com">
-                            {provento.data_com ? formatarData(provento.data_com) : "-"}
-                          </td>
-                          <td data-label="Valor por cota">{formatarMoedaPrecisa(provento.valor_por_cota)}</td>
-                          <td data-label="Quantidade">
-                            {provento.quantidade_base
-                              ? Number(provento.quantidade_base).toLocaleString("pt-BR")
-                              : "-"}
-                          </td>
-                          <td data-label="Total estimado">
-                            <strong className="value-income">{formatarMoeda(provento.valor_estimado)}</strong>
-                          </td>
+                <div className="dividend-content-grid">
+                  <section className="dividend-chart-panel">
+                    <div className="panel-header">
+                      <div>
+                        <h2>Proventos por mes</h2>
+                        <span>Evolucao da renda passiva no periodo filtrado.</span>
+                      </div>
+                    </div>
+                    <div className="dividend-chart-frame">
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={proventosPorMes} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                          <CartesianGrid stroke="#e2e8f0" vertical={false} />
+                          <XAxis
+                            dataKey="mes"
+                            tick={{ fill: "#64748b", fontSize: 12 }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <YAxis
+                            tickFormatter={(valor) => formatarMoeda(valor)}
+                            tick={{ fill: "#64748b", fontSize: 12 }}
+                            axisLine={false}
+                            tickLine={false}
+                            width={84}
+                          />
+                          <Tooltip
+                            formatter={(valor) => [formatarMoeda(valor), "Proventos"]}
+                            labelFormatter={(mes) => mes}
+                            contentStyle={{
+                              border: "1px solid #dce4ef",
+                              borderRadius: 10,
+                              boxShadow: "0 14px 34px rgb(15 23 42 / 8%)",
+                            }}
+                          />
+                          <Bar dataKey="total" name="Proventos" fill="#0f766e" radius={[8, 8, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </section>
+
+                  <aside className="dividend-ranking-panel">
+                    <div className="panel-header">
+                      <div>
+                        <h2>Por ativo</h2>
+                        <span>Concentracao dos proventos filtrados.</span>
+                      </div>
+                    </div>
+                    <div className="dividend-ranking-list">
+                      {proventosPorAtivo.slice(0, 8).map((item) => {
+                        const percentual = totalProventosFiltrados
+                          ? (item.total / totalProventosFiltrados) * 100
+                          : 0;
+
+                        return (
+                          <div className="dividend-ranking-row" key={item.ticker}>
+                            <div className="allocation-row-head">
+                              <strong>{item.ticker}</strong>
+                              <span>{formatarMoeda(item.total)}</span>
+                            </div>
+                            <div className="progress-track">
+                              <span
+                                className="progress-fill income"
+                                style={{ width: `${Math.min(Math.max(percentual, 0), 100)}%` }}
+                              />
+                            </div>
+                            <small>{item.eventos} evento(s)</small>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </aside>
+
+                  <div className="table-scroll dividend-table-full">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Ativo</th>
+                          <th>Tipo</th>
+                          <th>Data com</th>
+                          <th>Valor por cota</th>
+                          <th>Quantidade</th>
+                          <th>Total estimado</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {proventosFiltrados.map((provento) => (
+                          <tr key={provento.id}>
+                            <td data-label="Ativo">
+                              <strong>{provento.ticker}</strong>
+                              <span>{provento.fonte}</span>
+                            </td>
+                            <td data-label="Tipo">{provento.tipo || "Provento"}</td>
+                            <td data-label="Data com">
+                              {provento.data_com ? formatarData(provento.data_com) : "-"}
+                            </td>
+                            <td data-label="Valor por cota">{formatarMoedaPrecisa(provento.valor_por_cota)}</td>
+                            <td data-label="Quantidade">
+                              {provento.quantidade_base
+                                ? Number(provento.quantidade_base).toLocaleString("pt-BR")
+                                : "-"}
+                            </td>
+                            <td data-label="Total estimado">
+                              <strong className="value-income">{formatarMoeda(provento.valor_estimado)}</strong>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               ) : (
                 <div className="empty-dashboard">
