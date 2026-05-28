@@ -155,6 +155,25 @@ def obter_primeira_compra_carteira(db: Session) -> date | None:
     )
 
 
+def obter_primeira_compra_ativo(db: Session, ativo_id: int) -> date | None:
+    return (
+        db.query(func.min(models.MovimentacaoAtivo.data))
+        .filter(
+            models.MovimentacaoAtivo.ativo_id == ativo_id,
+            models.MovimentacaoAtivo.tipo == "compra",
+        )
+        .scalar()
+    )
+
+
+def obter_data_inicio_posicao_ativo(db: Session, ativo: models.Ativo) -> date:
+    primeira_compra = obter_primeira_compra_ativo(db, ativo.id)
+    if primeira_compra is None:
+        return ativo.data_inicial
+
+    return min(ativo.data_inicial, primeira_compra)
+
+
 def calcular_posicao_ativo_na_data(
     db: Session,
     ativo_id: int,
@@ -713,13 +732,12 @@ def buscar_proventos_complementares_stockanalysis(ticker: str) -> list[YahooProv
     return sorted(proventos, key=lambda provento: provento.data_pagamento, reverse=True)
 
 
-def combinar_proventos_por_data_e_valor(*listas_proventos: list[YahooProvento]) -> list[YahooProvento]:
+def combinar_proventos_por_data(*listas_proventos: list[YahooProvento]) -> list[YahooProvento]:
     mapa = {}
 
     for lista in listas_proventos:
         for provento in lista:
-            chave = (obter_data_com_yahoo(provento), Decimal(provento.valor_por_cota).quantize(Decimal("0.000001")))
-            mapa[chave] = provento
+            mapa[obter_data_com_yahoo(provento)] = provento
 
     return sorted(mapa.values(), key=lambda provento: provento.data_pagamento, reverse=True)
 
@@ -1170,17 +1188,19 @@ def atualizar_proventos_ativo(db: Session, ativo: models.Ativo) -> dict:
     proventos_yahoo = YahooFinanceClient().buscar_proventos(ativo.ticker)
     if ativo_eh_fii(ativo):
         proventos_complementares = buscar_proventos_complementares_stockanalysis(ativo.ticker)
-        proventos_yahoo = combinar_proventos_por_data_e_valor(proventos_yahoo, proventos_complementares)
+        proventos_yahoo = combinar_proventos_por_data(proventos_yahoo, proventos_complementares)
 
     removidos = remover_proventos_yahoo(db, ativo)
     db.flush()
+    data_inicio_posicao = obter_data_inicio_posicao_ativo(db, ativo)
     proventos_validos = [
         provento
         for provento in proventos_yahoo
-        if obter_data_com_yahoo(provento) >= ativo.data_inicial
+        if obter_data_com_yahoo(provento) >= data_inicio_posicao
     ]
     criados = 0
     ignorados_por_quantidade = 0
+    proventos_para_salvar = []
 
     for indice, provento_yahoo in enumerate(proventos_validos):
         data_com = obter_data_com_yahoo(provento_yahoo)
@@ -1207,15 +1227,48 @@ def atualizar_proventos_ativo(db: Session, ativo: models.Ativo) -> dict:
             valor_por_cota_ajustado,
         )
 
+        proventos_para_salvar.append(
+            {
+                "tipo": provento_yahoo.tipo,
+                "data_com": data_com,
+                "valor_por_cota": valor_por_cota_ajustado,
+                "quantidade_base": quantidade_base,
+                "valor_estimado": valor_por_cota_ajustado * quantidade_base,
+            }
+        )
+
+    if ativo_eh_fii(ativo):
+        proventos_por_mes = {}
+        for provento in proventos_para_salvar:
+            chave = provento["data_com"].strftime("%Y-%m")
+            provento_atual = proventos_por_mes.get(chave)
+            if provento_atual is None:
+                proventos_por_mes[chave] = provento
+                continue
+
+            valor_atual = Decimal(provento_atual["valor_estimado"])
+            valor_novo = Decimal(provento["valor_estimado"])
+            if valor_novo > valor_atual or (
+                valor_novo == valor_atual and provento["data_com"] > provento_atual["data_com"]
+            ):
+                proventos_por_mes[chave] = provento
+
+        proventos_para_salvar = sorted(
+            proventos_por_mes.values(),
+            key=lambda provento: provento["data_com"],
+            reverse=True,
+        )
+
+    for provento_dados in proventos_para_salvar:
         provento = models.ProventoAtivo(
             ativo_id=ativo.id,
             ticker=ativo.ticker,
-            tipo=provento_yahoo.tipo,
-            data_com=data_com,
+            tipo=provento_dados["tipo"],
+            data_com=provento_dados["data_com"],
             data_pagamento=None,
-            valor_por_cota=valor_por_cota_ajustado,
-            quantidade_base=quantidade_base,
-            valor_estimado=valor_por_cota_ajustado * quantidade_base,
+            valor_por_cota=provento_dados["valor_por_cota"],
+            quantidade_base=provento_dados["quantidade_base"],
+            valor_estimado=provento_dados["valor_estimado"],
             fonte="yahoo_finance",
         )
         db.add(provento)
