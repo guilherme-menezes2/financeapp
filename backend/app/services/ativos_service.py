@@ -1,14 +1,18 @@
 import calendar
+import html
 import os
-from datetime import date, datetime, timedelta
+import re
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import models
-from app.services.yahoo_finance_client import YahooFinanceClient
+from app.services.yahoo_finance_client import YahooFinanceClient, YahooProvento
 from app.utils.errors import bad_request, conflict, not_found
 
 
@@ -667,27 +671,57 @@ def ativo_eh_fii(ativo: models.Ativo) -> bool:
     return tipo == "fii" or ticker.endswith("11")
 
 
-def consolidar_proventos_mensais_fii(proventos_yahoo: list) -> list:
-    proventos_por_mes = {}
+def limpar_html(texto: str) -> str:
+    sem_tags = re.sub(r"<[^>]+>", "", texto)
+    return " ".join(html.unescape(sem_tags).split())
 
-    for provento in proventos_yahoo:
-        data_com = obter_data_com_yahoo(provento)
-        chave = data_com.strftime("%Y-%m")
-        provento_atual = proventos_por_mes.get(chave)
 
-        if provento_atual is None:
-            proventos_por_mes[chave] = provento
+def buscar_proventos_complementares_stockanalysis(ticker: str) -> list[YahooProvento]:
+    url = f"https://stockanalysis.com/quote/bvmf/{ticker.upper()}/dividend/"
+    request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+
+    try:
+        with urlopen(request, timeout=20) as response:
+            conteudo = response.read().decode("utf-8", errors="ignore")
+    except (HTTPError, URLError, TimeoutError):
+        return []
+
+    proventos = []
+    for linha in re.findall(r"<tr[^>]*>(.*?)</tr>", conteudo, flags=re.DOTALL | re.IGNORECASE):
+        colunas = [
+            limpar_html(coluna)
+            for coluna in re.findall(r"<td[^>]*>(.*?)</td>", linha, flags=re.DOTALL | re.IGNORECASE)
+        ]
+        if len(colunas) < 2:
             continue
 
-        data_atual = obter_data_com_yahoo(provento_atual)
-        if data_com > data_atual:
-            proventos_por_mes[chave] = provento
+        try:
+            data_provento = datetime.strptime(colunas[0], "%b %d, %Y").replace(tzinfo=timezone.utc)
+            valor = Decimal(colunas[1].replace("BRL", "").strip())
+        except (ValueError, ArithmeticError):
+            continue
 
-    return sorted(
-        proventos_por_mes.values(),
-        key=lambda provento: provento.data_pagamento,
-        reverse=True,
-    )
+        proventos.append(
+            YahooProvento(
+                ticker=ticker.upper(),
+                tipo="dividendo",
+                data_pagamento=data_provento,
+                valor_por_cota=valor,
+            )
+        )
+
+    return sorted(proventos, key=lambda provento: provento.data_pagamento, reverse=True)
+
+
+def combinar_proventos_por_data_e_valor(*listas_proventos: list[YahooProvento]) -> list[YahooProvento]:
+    mapa = {}
+
+    for lista in listas_proventos:
+        for provento in lista:
+            chave = (obter_data_com_yahoo(provento), Decimal(provento.valor_por_cota).quantize(Decimal("0.000001")))
+            mapa[chave] = provento
+
+    return sorted(mapa.values(), key=lambda provento: provento.data_pagamento, reverse=True)
 
 
 def existe_split_mesmo_evento(
@@ -1134,6 +1168,10 @@ def remover_proventos_yahoo(db: Session, ativo: models.Ativo) -> int:
 
 def atualizar_proventos_ativo(db: Session, ativo: models.Ativo) -> dict:
     proventos_yahoo = YahooFinanceClient().buscar_proventos(ativo.ticker)
+    if ativo_eh_fii(ativo):
+        proventos_complementares = buscar_proventos_complementares_stockanalysis(ativo.ticker)
+        proventos_yahoo = combinar_proventos_por_data_e_valor(proventos_yahoo, proventos_complementares)
+
     removidos = remover_proventos_yahoo(db, ativo)
     db.flush()
     proventos_validos = [
@@ -1141,10 +1179,6 @@ def atualizar_proventos_ativo(db: Session, ativo: models.Ativo) -> dict:
         for provento in proventos_yahoo
         if obter_data_com_yahoo(provento) >= ativo.data_inicial
     ]
-    proventos_antes_consolidacao = len(proventos_validos)
-    if ativo_eh_fii(ativo):
-        proventos_validos = consolidar_proventos_mensais_fii(proventos_validos)
-
     criados = 0
     ignorados_por_quantidade = 0
 
@@ -1191,9 +1225,7 @@ def atualizar_proventos_ativo(db: Session, ativo: models.Ativo) -> dict:
         "ticker": ativo.ticker,
         "proventos_encontrados": len(proventos_yahoo),
         "proventos_validos": len(proventos_validos),
-        "proventos_ignorados": (len(proventos_yahoo) - proventos_antes_consolidacao)
-        + (proventos_antes_consolidacao - len(proventos_validos))
-        + ignorados_por_quantidade,
+        "proventos_ignorados": (len(proventos_yahoo) - len(proventos_validos)) + ignorados_por_quantidade,
         "proventos_criados": criados,
         "proventos_removidos": removidos,
         "proventos_ajustados": 0,

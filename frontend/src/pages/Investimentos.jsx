@@ -73,6 +73,77 @@ function obterMes(data) {
   return data ? data.slice(0, 7) : "";
 }
 
+function somarMeses(mes, quantidade) {
+  const [ano, mesNumero] = mes.split("-").map(Number);
+  const data = new Date(ano, mesNumero - 1 + quantidade, 1);
+  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function obterMesAtual() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function obterMesProventoGrafico(provento, mesesOriginaisPorAtivo, mesesUsadosPorAtivo, ehFii) {
+  const mesOriginal = obterMes(provento.data_com || provento.data_pagamento);
+  if (!mesOriginal) {
+    return "";
+  }
+
+  if (!ehFii) {
+    return mesOriginal;
+  }
+
+  const ticker = provento.ticker || String(provento.ativo_id || "ativo");
+  const mesesOriginais = mesesOriginaisPorAtivo.get(ticker) || new Set();
+  const mesesUsados = mesesUsadosPorAtivo.get(ticker) || new Set();
+  let mesGrafico = mesOriginal;
+
+  if (mesesUsados.has(mesOriginal)) {
+    const candidato = somarMeses(mesOriginal, 1);
+    if (candidato <= obterMesAtual() && !mesesUsados.has(candidato) && !mesesOriginais.has(candidato)) {
+      mesGrafico = candidato;
+    }
+  }
+
+  mesesUsados.add(mesGrafico);
+  mesesUsadosPorAtivo.set(ticker, mesesUsados);
+  return mesGrafico;
+}
+
+function deduplicarProventosGrafico(proventos, ativosPorId) {
+  const mapa = new Map();
+
+  proventos.forEach((provento) => {
+    const ativo = ativosPorId.get(provento.ativo_id);
+    const ticker = provento.ticker || ativo?.ticker || String(provento.ativo_id || "ativo");
+    const ehFii = (ativo?.tipo || "").toLowerCase() === "fii" || ticker.toUpperCase().endsWith("11");
+    const mes = obterMes(provento.data_com || provento.data_pagamento);
+
+    if (!ehFii || !mes) {
+      mapa.set(`evento-${provento.id}`, provento);
+      return;
+    }
+
+    const chave = `${ticker}-${mes}`;
+    const atual = mapa.get(chave);
+    if (!atual) {
+      mapa.set(chave, provento);
+      return;
+    }
+
+    const valorAtual = numero(atual.valor_estimado);
+    const valorNovo = numero(provento.valor_estimado);
+    const dataAtual = atual.data_com || atual.data_pagamento || "";
+    const dataNova = provento.data_com || provento.data_pagamento || "";
+
+    if (valorNovo > valorAtual || (valorNovo === valorAtual && dataNova > dataAtual)) {
+      mapa.set(chave, provento);
+    }
+  });
+
+  return [...mapa.values()];
+}
+
 function extrairMensagemErro(error, fallback) {
   const detail = error?.response?.data?.detail;
 
@@ -341,9 +412,37 @@ function Investimentos({ view = "carteira" }) {
 
   const proventosPorMes = useMemo(() => {
     const mapa = new Map();
+    const mesesOriginaisPorAtivo = new Map();
+    const mesesUsadosPorAtivo = new Map();
+    const ativosPorId = new Map(ativos.map((ativo) => [ativo.id, ativo]));
+    const proventosGrafico = deduplicarProventosGrafico(proventosFiltrados, ativosPorId);
+    const proventosOrdenados = proventosGrafico.sort((a, b) => {
+      const dataA = a.data_com || a.data_pagamento || "";
+      const dataB = b.data_com || b.data_pagamento || "";
+      if (dataA !== dataB) {
+        return dataA.localeCompare(dataB);
+      }
+      return String(a.ticker || "").localeCompare(String(b.ticker || ""));
+    });
 
-    proventosFiltrados.forEach((provento) => {
+    proventosOrdenados.forEach((provento) => {
+      const ativo = ativosPorId.get(provento.ativo_id);
+      const ticker = provento.ticker || ativo?.ticker || String(provento.ativo_id || "ativo");
       const mes = obterMes(provento.data_com || provento.data_pagamento);
+      if (!mes) {
+        return;
+      }
+
+      const meses = mesesOriginaisPorAtivo.get(ticker) || new Set();
+      meses.add(mes);
+      mesesOriginaisPorAtivo.set(ticker, meses);
+    });
+
+    proventosOrdenados.forEach((provento) => {
+      const ativo = ativosPorId.get(provento.ativo_id);
+      const ticker = provento.ticker || ativo?.ticker || "";
+      const ehFii = (ativo?.tipo || "").toLowerCase() === "fii" || ticker.toUpperCase().endsWith("11");
+      const mes = obterMesProventoGrafico(provento, mesesOriginaisPorAtivo, mesesUsadosPorAtivo, ehFii);
       if (!mes) {
         return;
       }
@@ -355,7 +454,7 @@ function Investimentos({ view = "carteira" }) {
     });
 
     return [...mapa.values()].sort((a, b) => a.mes.localeCompare(b.mes));
-  }, [proventosFiltrados]);
+  }, [ativos, proventosFiltrados]);
 
   const resumoProventos = useMemo(() => {
     const maiorPagador = proventosPorAtivo[0] || null;
