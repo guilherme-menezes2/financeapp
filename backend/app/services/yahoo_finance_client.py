@@ -76,7 +76,7 @@ class YahooFinanceClient:
             try:
                 resultado = self._buscar_resultado(
                     simbolo,
-                    "range=10y&interval=1mo&events=div",
+                    "range=10y&interval=1d&events=div",
                 )
                 return self._converter_proventos(resultado, ticker)
             except ValueError as error:
